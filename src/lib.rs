@@ -201,6 +201,10 @@ impl<F, I, O, E> Parser<F, I> where F: ParserImpl<I, Output = O, Error = E> {
         })
     }
 
+    pub fn convert_err<E2>(self) -> parser!(<I, O, E2>)
+    where E2: From<E> {
+        self.map_err(E2::from)
+    }
 
     pub fn borrowed<'a>(&'a self) -> parser!(<I, O, E> + 'a) {
         Parser::new(move |inp| self.0.apply(inp))
