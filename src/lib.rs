@@ -1,8 +1,19 @@
 use std::marker::PhantomData;
 
 pub mod traits;
-pub use traits::{AltError, Collection, EofError, HasEof, NotError, RangeLike, Tag, TagError};
-use traits::NoCollection;
+pub use traits::{AltError, Collection, ConsumeError, EofError, HasEof, NotError, RangeLike, Recordable, SplitFirst, Tag, TagError};
+
+pub struct NoCollection<T>(PhantomData<T>);
+
+impl<T> Collection for NoCollection<T> {
+    type Item = T;
+
+    fn with_capacity(_: usize) -> Self {
+        NoCollection(PhantomData)
+    }
+
+    fn push(&mut self, _: usize, _: Self::Item) { }
+}
 
 pub trait ParserImpl<I> {
     type Output;
@@ -178,6 +189,19 @@ impl<F, I, O, E> Parser<F, I> where F: ParserImpl<I, Output = O, Error = E> {
         self.repeat(0..=1)
     }
 
+    pub fn ignore(self) -> parser!(<I, (), E>) {
+        self.map(|_| ())
+    }
+
+    pub fn record(self) -> parser!(<I, I::Output, E>)
+    where I: Clone + Recordable {
+        Parser::new(move |inp: I| {
+            let old = inp.clone();
+            self.0.apply(inp).map(|(left, _)| (left.clone(), old.record(left)))
+        })
+    }
+
+
     pub fn borrowed<'a>(&'a self) -> parser!(<I, O, E> + 'a) {
         Parser::new(move |inp| self.0.apply(inp))
     }
@@ -229,6 +253,30 @@ where F: ParserImpl<I, Output = O, Error = EO>, E: NotError<O>, I: Clone {
         Ok((_, out)) => Err(E::not(out)),
         Err(err) => Ok((inp, err)),
     })
+}
+
+pub fn consume_one_where<F, I, E>(f: F) -> parser!(<I, I::Element, E>)
+where I: SplitFirst, F: Fn(&I::Element) -> bool, E: ConsumeError<I::Element> {
+    Parser::new(move |inp: I| {
+        match inp.split_first() {
+            Some((element, rest)) => if f(&element) {
+                Ok((rest, element))
+            } else {
+                Err(E::condition_failed(element))
+            },
+            None => Err(E::eof())
+        }
+    })
+}
+
+pub fn consume_while<F, I, E, R: RangeLike>(f: F, r: R) -> parser!(<I, (), E>)
+where I: SplitFirst, F: Fn(&I::Element) -> bool, E: ConsumeError<I::Element>, I: Clone {
+    consume_one_where(f).repeat::<NoCollection<_>, _>(r).ignore()
+}
+
+pub fn record_while<F, I, E, R: RangeLike>(f: F, r: R) -> parser!(<I, I::Output, E>)
+where I: SplitFirst, F: Fn(&I::Element) -> bool, E: ConsumeError<I::Element>, I: Clone + Recordable {
+    consume_while(f, r).record()
 }
 
 #[cfg(test)]

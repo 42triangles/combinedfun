@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use std::ops::{Bound, RangeBounds};
 
 pub trait AltError {
@@ -136,18 +135,6 @@ macro_rules! collection_impl {
 
 collection_impl!(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32);
 
-pub(crate) struct NoCollection<T>(PhantomData<T>);
-
-impl<T> Collection for NoCollection<T> {
-    type Item = T;
-
-    fn with_capacity(_: usize) -> Self {
-        NoCollection(PhantomData)
-    }
-
-    fn push(&mut self, _: usize, _: Self::Item) { }
-}
-
 pub trait HasEof {
     fn at_eof(&self) -> bool;
 }
@@ -178,4 +165,58 @@ pub trait NotError<O> {
 
 impl<O> NotError<O> for () {
     fn not(_: O) { }
+}
+
+pub trait Recordable {
+    type Output;
+
+    fn record(self, later: Self) -> Self::Output;
+}
+
+impl<'a> Recordable for &'a str {
+    type Output = &'a str;
+
+    fn record(self, later: &'a str) -> &'a str {
+        &self[..(self.len() - later.len())]
+    }
+}
+
+impl<'a, T> Recordable for &'a [T] {
+    type Output = &'a [T];
+
+    fn record(self, later: &'a [T]) -> &'a [T] {
+        &self[..(self.len() - later.len())]
+    }
+}
+
+pub trait SplitFirst: Sized {
+    type Element;
+
+    fn split_first(self) -> Option<(Self::Element, Self)>;
+}
+
+impl<'a> SplitFirst for &'a str {
+    type Element = char;
+
+    fn split_first(self) -> Option<(char, &'a str)> {
+        self.chars().next().map(|c| (c, &self[c.len_utf8()..]))
+    }
+}
+
+impl<'a, T> SplitFirst for &'a [T] {
+    type Element = &'a T;
+
+    fn split_first(self) -> Option<(&'a T, &'a [T])> {
+        self.iter().next().map(|x| (x, &self[1..]))
+    }
+}
+
+pub trait ConsumeError<E> {
+    fn eof() -> Self;
+    fn condition_failed(element: E) -> Self;
+}
+
+impl<E> ConsumeError<E> for () {
+    fn eof() { }
+    fn condition_failed(_: E) { }
 }
