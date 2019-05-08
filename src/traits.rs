@@ -9,10 +9,14 @@ impl<I> AltError<I> for () {
 }
 
 pub trait Tag<I> {
-    fn parse_tag(&self, inp: I) -> Option<(I, I)>;
+    type Output;
+
+    fn parse_tag(&self, inp: I) -> Option<(Self::Output, I)>;
 }
 
 impl<'a> Tag<&'a str> for str {
+    type Output = &'a str;
+
     fn parse_tag(&self, inp: &'a str) -> Option<(&'a str, &'a str)> {
         if inp.starts_with(self) {
             Some(inp.split_at(self.len()))
@@ -23,6 +27,8 @@ impl<'a> Tag<&'a str> for str {
 }
 
 impl<'a, T> Tag<&'a [T]> for [T] where T: PartialEq {
+    type Output = &'a [T];
+
     fn parse_tag(&self, inp: &'a [T]) -> Option<(&'a [T], &'a [T])> {
         if inp.starts_with(self) {
             Some(inp.split_at(self.len()))
@@ -33,6 +39,8 @@ impl<'a, T> Tag<&'a [T]> for [T] where T: PartialEq {
 }
 
 impl<'a> Tag<&'a [u8]> for str {
+    type Output = &'a [u8];
+
     fn parse_tag(&self, inp: &'a [u8]) -> Option<(&'a [u8], &'a [u8])> {
         self.as_bytes().parse_tag(inp)
     }
@@ -219,4 +227,8 @@ pub trait ConsumeError<I: SplitFirst> {
 impl<I: SplitFirst> ConsumeError<I> for () {
     fn eof(_: I) { }
     fn condition_failed(_: I::Element, _: I) { }
+}
+
+pub trait Position<I>: Default {
+    fn record_difference(&self, old: &I, new: &I) -> Self;
 }

@@ -1,7 +1,9 @@
 use std::marker::PhantomData;
 
 pub mod traits;
-pub use traits::{AltError, Collection, ConsumeError, EofError, HasEof, NotError, RangeLike, Recordable, SplitFirst, Tag, TagError};
+pub use traits::{AltError, Collection, ConsumeError, EofError, HasEof, NotError, Position, RangeLike, Recordable, SplitFirst, Tag, TagError};
+
+pub mod types;
 
 pub struct NoCollection<T>(PhantomData<T>);
 
@@ -206,6 +208,17 @@ impl<F, I, O, E> Parser<F, I> where F: ParserImpl<I, Output = O, Error = E> {
         self.map_err(E2::from)
     }
 
+    pub fn map_full<F2, O2>(self, f: F2) -> parser!(<I, O2, E>)
+    where F2: Fn((&I, &I), O) -> O2, I: Clone {
+        Parser::new(move |inp: I| {
+            let inp_clone = inp.clone();
+            self.0.apply(inp).map(|(left, out)| {
+                let out = f((&inp_clone, &left), out);
+                (left, out)
+            })
+        })
+    }
+
     pub fn borrowed<'a>(&'a self) -> parser!(<I, O, E> + 'a) {
         Parser::new(move |inp| self.0.apply(inp))
     }
@@ -232,9 +245,9 @@ pub fn epsilon<I, E>() -> parser!(<I, (), E>) {
     Parser::new(|inp| Ok((inp, ())))
 }
 
-pub fn tag<'a, T, I, E>(tag: &'a T) -> parser!(<I, I, E> + 'a)
+pub fn tag<'a, T, I, E>(tag: &'a T) -> parser!(<I, T::Output, E> + 'a)
 where T: Tag<I>, E: TagError<'a, T, I>, I: Clone {
-    Parser::new(move |inp: I| tag.parse_tag(inp.clone()).ok_or_else(|| E::tag(tag, inp)))
+    Parser::new(move |inp: I| tag.parse_tag(inp.clone()).map(|(tag, rest)| (rest, tag)).ok_or_else(|| E::tag(tag, inp)))
 }
 
 pub fn fail_with<F, I, O, E>(f: F) -> parser!(<I, O, E>)
