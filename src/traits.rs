@@ -1,11 +1,11 @@
 use std::ops::{Bound, RangeBounds};
 
-pub trait AltError {
-    fn alt(self, other: Self) -> Self;
+pub trait AltError<I> {
+    fn alt(self, other: Self, at: I) -> Self;
 }
 
-impl AltError for () {
-    fn alt(self, _: ()) { }
+impl<I> AltError<I> for () {
+    fn alt(self, _: (), _: I) { }
 }
 
 pub trait Tag<I> {
@@ -38,12 +38,12 @@ impl<'a> Tag<&'a [u8]> for str {
     }
 }
 
-pub trait TagError<'a, T> {
-    fn tag(tag: &'a T) -> Self;
+pub trait TagError<'a, T, I> {
+    fn tag(tag: &'a T, at: I) -> Self;
 }
 
-impl<'a, T> TagError<'a, T> for () {
-    fn tag(_: &'a T) { }
+impl<'a, I, T> TagError<'a, T, I> for () {
+    fn tag(_: &'a T, _: I) { }
 }
 
 pub trait RangeLike {
@@ -151,20 +151,20 @@ impl<'a, T> HasEof for &'a [T] {
     }
 }
 
-pub trait EofError {
-    fn no_eof() -> Self;
+pub trait EofError<I> {
+    fn no_eof(at: I) -> Self;
 }
 
-impl EofError for () {
-    fn no_eof() { }
+impl<I> EofError<I> for () {
+    fn no_eof(_: I) { }
 }
 
-pub trait NotError<O> {
-    fn not(out: O) -> Self;
+pub trait NotError<O, I> {
+    fn not(out: O, at: I) -> Self;
 }
 
-impl<O> NotError<O> for () {
-    fn not(_: O) { }
+impl<O, I> NotError<O, I> for () {
+    fn not(_: O, _: I) { }
 }
 
 pub trait Recordable {
@@ -211,12 +211,12 @@ impl<'a, T> SplitFirst for &'a [T] {
     }
 }
 
-pub trait ConsumeError<E> {
-    fn eof() -> Self;
-    fn condition_failed(element: E) -> Self;
+pub trait ConsumeError<I: SplitFirst> {
+    fn eof(at: I) -> Self;
+    fn condition_failed(element: I::Element, at: I) -> Self;
 }
 
-impl<E> ConsumeError<E> for () {
-    fn eof() { }
-    fn condition_failed(_: E) { }
+impl<I: SplitFirst> ConsumeError<I> for () {
+    fn eof(_: I) { }
+    fn condition_failed(_: I::Element, _: I) { }
 }

@@ -71,8 +71,8 @@ impl<F, I, O, E> Parser<F, I> where F: ParserImpl<I, Output = O, Error = E> {
     }
 
     pub fn or<F2>(self, alt: Parser<F2, I>) -> parser!(<I, O, E>)
-    where F2: ParserImpl<I, Output = O, Error = E>, I: Clone, E: AltError {
-        Parser::new(move |input: I| self.0.apply(input.clone()).or_else(|e1| alt.0.apply(input).map_err(|e2| e1.alt(e2))))
+    where F2: ParserImpl<I, Output = O, Error = E>, I: Clone, E: AltError<I> {
+        Parser::new(move |inp: I| self.0.apply(inp.clone()).or_else(|e1| alt.0.apply(inp.clone()).map_err(|e2| e1.alt(e2, inp))))
     }
 
     pub fn map_result<F2, O2>(self, f: F2) -> parser!(<I, O2, E>)
@@ -215,7 +215,7 @@ impl<F, I, O, E> Parser<F, I> where F: ParserImpl<I, Output = O, Error = E> {
     }
 
     pub fn parse(&self, input: I) -> Result<O, E>
-    where I: HasEof, E: EofError {
+    where I: HasEof, E: EofError<I> {
         self.borrowed().followed_by(eof()).parse_partial(input).map(|(_, o)| o)
     }
 
@@ -233,8 +233,8 @@ pub fn epsilon<I, E>() -> parser!(<I, (), E>) {
 }
 
 pub fn tag<'a, T, I, E>(tag: &'a T) -> parser!(<I, I, E> + 'a)
-where T: Tag<I>, E: TagError<'a, T> {
-    Parser::new(move |inp| tag.parse_tag(inp).ok_or_else(|| E::tag(tag)))
+where T: Tag<I>, E: TagError<'a, T, I>, I: Clone {
+    Parser::new(move |inp: I| tag.parse_tag(inp.clone()).ok_or_else(|| E::tag(tag, inp)))
 }
 
 pub fn fail_with<F, I, O, E>(f: F) -> parser!(<I, O, E>)
@@ -243,43 +243,43 @@ where F: Fn() -> E {
 }
 
 pub fn eof<I, E>() -> parser!(<I, (), E>)
-where I: HasEof, E: EofError {
+where I: HasEof, E: EofError<I> {
     Parser::new(move |inp: I| if inp.at_eof() {
         Ok((inp, ()))
     } else {
-        Err(E::no_eof())
+        Err(E::no_eof(inp))
     })
 }
 
 pub fn not<F, I, O, EO, E>(p: Parser<F, I>) -> parser!(<I, EO, E>)
-where F: ParserImpl<I, Output = O, Error = EO>, E: NotError<O>, I: Clone {
+where F: ParserImpl<I, Output = O, Error = EO>, E: NotError<O, I>, I: Clone {
     Parser::new(move |inp: I| match p.0.apply(inp.clone()) {
-        Ok((_, out)) => Err(E::not(out)),
+        Ok((_, out)) => Err(E::not(out, inp)),
         Err(err) => Ok((inp, err)),
     })
 }
 
 pub fn consume_one_where<F, I, E>(f: F) -> parser!(<I, I::Element, E>)
-where I: SplitFirst, F: Fn(&I::Element) -> bool, E: ConsumeError<I::Element> {
+where I: SplitFirst + Clone, F: Fn(&I::Element) -> bool, E: ConsumeError<I> {
     Parser::new(move |inp: I| {
-        match inp.split_first() {
+        match inp.clone().split_first() {
             Some((element, rest)) => if f(&element) {
                 Ok((rest, element))
             } else {
-                Err(E::condition_failed(element))
+                Err(E::condition_failed(element, inp))
             },
-            None => Err(E::eof())
+            None => Err(E::eof(inp))
         }
     })
 }
 
 pub fn consume_while<F, I, E, R: RangeLike>(f: F, r: R) -> parser!(<I, (), E>)
-where I: SplitFirst, F: Fn(&I::Element) -> bool, E: ConsumeError<I::Element>, I: Clone {
+where I: SplitFirst, F: Fn(&I::Element) -> bool, E: ConsumeError<I>, I: Clone {
     consume_one_where(f).repeat::<NoCollection<_>, _>(r).ignore()
 }
 
 pub fn record_while<F, I, E, R: RangeLike>(f: F, r: R) -> parser!(<I, I::Output, E>)
-where I: SplitFirst, F: Fn(&I::Element) -> bool, E: ConsumeError<I::Element>, I: Clone + Recordable {
+where I: SplitFirst, F: Fn(&I::Element) -> bool, E: ConsumeError<I>, I: Clone + Recordable {
     consume_while(f, r).record()
 }
 
