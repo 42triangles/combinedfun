@@ -1,21 +1,14 @@
+#![type_length_limit="1209804"]
 use std::marker::PhantomData;
 
 pub mod traits;
 pub use traits::{AltError, Collection, ConsumeError, EofError, HasEof, NotError, Position, RangeLike, Recordable, SplitFirst, Tag, TagError};
 
 pub mod types;
+pub use types::{Index, NoCollection, Pos, Span};
 
-pub struct NoCollection<T>(PhantomData<T>);
-
-impl<T> Collection for NoCollection<T> {
-    type Item = T;
-
-    fn with_capacity(_: usize) -> Self {
-        NoCollection(PhantomData)
-    }
-
-    fn push(&mut self, _: usize, _: Self::Item) { }
-}
+#[cfg(test)]
+mod tests;
 
 pub trait ParserImpl<I> {
     type Output;
@@ -45,6 +38,13 @@ macro_rules! parser {
     };
 }
 
+#[macro_export]
+macro_rules! parser_dbg {
+    ($parser:expr) => {
+        $parser.map_full(|rest, x| dbg!((rest, x)).1).map_err(|err| dbg!(err))
+    }
+}
+
 // To appease the type inference
 impl<F, I, O, E> Parser<F, I> where F: Fn(I) -> Result<(I, O), E> {
     pub fn new(func: F) -> Self {
@@ -57,12 +57,12 @@ impl<F, I, O, E> Parser<F, I> where F: ParserImpl<I, Output = O, Error = E> {
         Parser(implementation, PhantomData)
     }
 
-    pub fn then<F2, O2>(self, next: Parser<F2, I>) -> parser!(<I, (O, O2), E>)
+    pub fn then<O2, F2>(self, next: Parser<F2, I>) -> parser!(<I, (O, O2), E>)
     where F2: ParserImpl<I, Output = O2, Error = E> {
         Parser::new(move |input| self.0.apply(input).and_then(|(left, out1)| next.0.apply(left).map(|out2| (out2.0, (out1, out2.1)))))
     }
 
-    pub fn before<F2, O2>(self, main: Parser<F2, I>) -> parser!(<I, O2, E>)
+    pub fn before<O2, F2>(self, main: Parser<F2, I>) -> parser!(<I, O2, E>)
     where F2: ParserImpl<I, Output = O2, Error = E> {
         self.then(main).map(|(_, main_out)| main_out)
     }
@@ -77,22 +77,22 @@ impl<F, I, O, E> Parser<F, I> where F: ParserImpl<I, Output = O, Error = E> {
         Parser::new(move |inp: I| self.0.apply(inp.clone()).or_else(|e1| alt.0.apply(inp.clone()).map_err(|e2| e1.alt(e2, inp))))
     }
 
-    pub fn map_result<F2, O2>(self, f: F2) -> parser!(<I, O2, E>)
+    pub fn map_result<O2, F2>(self, f: F2) -> parser!(<I, O2, E>)
     where F2: Fn(O) -> Result<O2, E> {
         Parser::new(move |input| self.0.apply(input).and_then(|(l, o)| f(o).map(|new_o| (l, new_o))))
     }
 
-    pub fn map<F2, O2>(self, f: F2) -> parser!(<I, O2, E>)
+    pub fn map<O2, F2>(self, f: F2) -> parser!(<I, O2, E>)
     where F2: Fn(O) -> O2 {
         self.map_result(move |o| Ok(f(o)))
     }
 
-    pub fn map_err<F2, E2>(self, f: F2) -> parser!(<I, O, E2>)
+    pub fn map_err<E2, F2>(self, f: F2) -> parser!(<I, O, E2>)
     where F2: Fn(E) -> E2 {
         Parser::new(move |input| self.0.apply(input).map_err(|e| f(e)))
     }
 
-    pub fn counted_separated<F2, C, R: RangeLike>(self, range: R, by: Parser<F2, I>) -> parser!(<I, (C, usize), E>)
+    pub fn counted_separated<C, F2, R: RangeLike>(self, range: R, by: Parser<F2, I>) -> parser!(<I, (C, usize), E>)
     where F2: ParserImpl<I, Error = E>, C: Collection<Item = O>, I: Clone {
         Parser::new(move |input: I| {
             let with_by = by.borrowed().before(self.borrowed());
@@ -141,19 +141,19 @@ impl<F, I, O, E> Parser<F, I> where F: ParserImpl<I, Output = O, Error = E> {
         })
     }
 
-    pub fn separated<F2, C, R: RangeLike>(self, range: R, by: Parser<F2, I>) -> parser!(<I, C, E>)
+    pub fn separated<C, F2, R: RangeLike>(self, range: R, by: Parser<F2, I>) -> parser!(<I, C, E>)
     where F2: ParserImpl<I, Error = E>, C: Collection<Item = O>, I: Clone {
         self.counted_separated(range, by).map(|(c, _)| c)
     }
 
-    pub fn const_separated<F2, C>(self, n: usize, by: Parser<F2, I>) -> parser!(<I, C, E>)
+    pub fn const_separated<C, F2>(self, n: usize, by: Parser<F2, I>) -> parser!(<I, C, E>)
     where F2: ParserImpl<I, Error = E>, C: Collection<Item = O>, I: Clone {
         self.separated(n..=n, by)
     }
 
-    pub fn count_separated_within<F2, R: RangeLike>(self, range: R, by: Parser<F2, I>) -> parser!(<I, usize, E>)
+    pub fn count_separated_within<R: RangeLike, F2>(self, range: R, by: Parser<F2, I>) -> parser!(<I, usize, E>)
     where F2: ParserImpl<I, Error = E>, I: Clone {
-        self.counted_separated::<_, NoCollection<O>, _>(range, by).map(|(_, count)| count)
+        self.counted_separated::<NoCollection<O>, _, _>(range, by).map(|(_, count)| count)
     }
 
     pub fn count_separated<F2>(self, by: Parser<F2, I>) -> parser!(<I, usize, E>)
@@ -208,7 +208,7 @@ impl<F, I, O, E> Parser<F, I> where F: ParserImpl<I, Output = O, Error = E> {
         self.map_err(E2::from)
     }
 
-    pub fn map_full<F2, O2>(self, f: F2) -> parser!(<I, O2, E>)
+    pub fn map_full<O2, F2>(self, f: F2) -> parser!(<I, O2, E>)
     where F2: Fn((&I, &I), O) -> O2, I: Clone {
         Parser::new(move |inp: I| {
             let inp_clone = inp.clone();
@@ -241,18 +241,29 @@ impl<F, I, O, E> Parser<F, I> where F: ParserImpl<I, Output = O, Error = E> {
     }
 }
 
+pub type FnParser<I, O, E> = Parser<fn(I) -> Result<(I, O), E>, I>;
+
+pub fn f<I, O, E>(func: fn(I) -> Result<(I, O), E>) -> FnParser<I, O, E> {
+    Parser::new(func)
+}
+
 pub fn epsilon<I, E>() -> parser!(<I, (), E>) {
     Parser::new(|inp| Ok((inp, ())))
 }
 
-pub fn tag<'a, T, I, E>(tag: &'a T) -> parser!(<I, T::Output, E> + 'a)
+pub fn tag<'a, I, E, T: ?Sized>(tag: &'a T) -> parser!(<I, T::Output, E> + 'a)
 where T: Tag<I>, E: TagError<'a, T, I>, I: Clone {
     Parser::new(move |inp: I| tag.parse_tag(inp.clone()).map(|(tag, rest)| (rest, tag)).ok_or_else(|| E::tag(tag, inp)))
 }
 
-pub fn fail_with<F, I, O, E>(f: F) -> parser!(<I, O, E>)
+pub fn fail_with<I, O, E, F>(f: F) -> parser!(<I, O, E>)
 where F: Fn() -> E {
     Parser::new(move |_| Err(f()))
+}
+
+pub fn fail_with_const<I, O, E>(e: E) -> parser!(<I, O, E>)
+where E: Clone {
+    fail_with(move || e.clone())
 }
 
 pub fn eof<I, E>() -> parser!(<I, (), E>)
@@ -264,7 +275,7 @@ where I: HasEof, E: EofError<I> {
     })
 }
 
-pub fn not<F, I, O, EO, E>(p: Parser<F, I>) -> parser!(<I, EO, E>)
+pub fn not<I, O, EO, E, F>(p: Parser<F, I>) -> parser!(<I, EO, E>)
 where F: ParserImpl<I, Output = O, Error = EO>, E: NotError<O, I>, I: Clone {
     Parser::new(move |inp: I| match p.0.apply(inp.clone()) {
         Ok((_, out)) => Err(E::not(out, inp)),
@@ -272,7 +283,7 @@ where F: ParserImpl<I, Output = O, Error = EO>, E: NotError<O, I>, I: Clone {
     })
 }
 
-pub fn consume_one_where<F, I, E>(f: F) -> parser!(<I, I::Element, E>)
+pub fn consume_one_where<I, E, F>(f: F) -> parser!(<I, I::Element, E>)
 where I: SplitFirst + Clone, F: Fn(&I::Element) -> bool, E: ConsumeError<I> {
     Parser::new(move |inp: I| {
         match inp.clone().split_first() {
@@ -286,20 +297,17 @@ where I: SplitFirst + Clone, F: Fn(&I::Element) -> bool, E: ConsumeError<I> {
     })
 }
 
-pub fn consume_while<F, I, E, R: RangeLike>(f: F, r: R) -> parser!(<I, (), E>)
+pub fn consume_while<I, E, F, R: RangeLike>(f: F, r: R) -> parser!(<I, (), E>)
 where I: SplitFirst, F: Fn(&I::Element) -> bool, E: ConsumeError<I>, I: Clone {
     consume_one_where(f).repeat::<NoCollection<_>, _>(r).ignore()
 }
 
-pub fn record_while<F, I, E, R: RangeLike>(f: F, r: R) -> parser!(<I, I::Output, E>)
+pub fn record_while<I, E, F, R: RangeLike>(f: F, r: R) -> parser!(<I, I::Output, E>)
 where I: SplitFirst, F: Fn(&I::Element) -> bool, E: ConsumeError<I>, I: Clone + Recordable {
     consume_while(f, r).record()
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
+pub fn take<I, E, R: RangeLike>(r: R) -> parser!(<I, I::Output, E>)
+where I: SplitFirst, E: ConsumeError<I>, I: Clone + Recordable {
+    record_while(|_| true, r)
 }

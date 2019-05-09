@@ -46,11 +46,11 @@ impl<'a> Tag<&'a [u8]> for str {
     }
 }
 
-pub trait TagError<'a, T, I> {
+pub trait TagError<'a, T: ?Sized, I> {
     fn tag(tag: &'a T, at: I) -> Self;
 }
 
-impl<'a, I, T> TagError<'a, T, I> for () {
+impl<'a, I, T: ?Sized> TagError<'a, T, I> for () {
     fn tag(_: &'a T, _: I) { }
 }
 
@@ -60,33 +60,33 @@ pub trait RangeLike {
     fn capacity(&self) -> usize;
 }
 
-fn continue_from_bound(n: usize, bound: Bound<&usize>) -> bool {
+fn continue_from_bound(n: usize, bound: Bound<&usize>, unbounded: bool) -> bool {
     match bound {
-        Bound::Included(&stop) => n <= stop,
-        Bound::Excluded(&stop) => n < stop,
-        Bound::Unbounded => true,
-    }
-}
-
-fn bound_to_option(bound: Bound<&usize>) -> Option<usize> {
-    match bound {
-        Bound::Included(&stop) => Some(stop),
-        Bound::Excluded(&stop) => Some(stop.saturating_sub(1)),
-        Bound::Unbounded => None,
+        Bound::Included(&stop) => n < stop,
+        Bound::Excluded(&stop) => n + 1 < stop,
+        Bound::Unbounded => unbounded,
     }
 }
 
 impl<T> RangeLike for T where T: RangeBounds<usize> {
     fn can_continue(&self, n: usize) -> bool {
-        continue_from_bound(n, self.end_bound())
+        continue_from_bound(n, self.end_bound(), true)
     }
 
     fn has_to_continue(&self, n: usize) -> bool {
-        continue_from_bound(n, self.start_bound())
+        continue_from_bound(n, self.start_bound(), false)
     }
 
     fn capacity(&self) -> usize {
-        bound_to_option(self.end_bound()).or_else(|| bound_to_option(self.start_bound())).unwrap_or(0)
+        match self.end_bound() {
+            Bound::Included(&n) => n,
+            Bound::Excluded(&n) => n.saturating_sub(1),
+            Bound::Unbounded => match self.start_bound() {
+                Bound::Included(&n) => n,
+                Bound::Excluded(&n) => n + 1,
+                Bound::Unbounded => 0,
+            }
+        }
     }
 }
 
