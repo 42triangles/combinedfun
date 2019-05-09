@@ -48,12 +48,12 @@ fn test_followed_by() {
 
 #[test]
 fn test_or() {
-    let parser = tag("test").map(|_| 0).or(tag("text").map(|_| 1));
+    let parser = tag("test") >> (|_| 0) | tag("text") >> (|_| 1);
     assert_eq!(parser.parse("test"), Ok(0));
     assert_eq!(parser.parse("text"), Ok(1));
     assert_eq!(parser.parse("nope"), Err(()));
 
-    let parser = tag("test").map(|_| 0).or(tag("test").map(|_| 1));
+    let parser = tag("test") >> (|_| 0) | tag("test") >> (|_| 1);
     assert_eq!(parser.parse("test"), Ok(0));
     assert_eq!(parser.parse("text"), Err(()));
     assert_eq!(parser.parse("nope"), Err(()));
@@ -61,18 +61,18 @@ fn test_or() {
 
 #[test]
 fn test_map_result() {
-    assert_eq!(epsilon().map(|()| 1).map_result(|i| Ok(i) as Result<_, ()>).parse(""), Ok(1));
-    assert_eq!(fail_with_const(()).map(|()| 1).map_result(|i| Ok(i)).parse(""), Err(()));
-    assert_eq!(epsilon().map_result(|_| Err(()) as Result<i32, _>).parse(""), Err(()));
-    assert_eq!(epsilon().map_result(|_| Err(()) as Result<i32, _>).parse(""), Err(()));
+    assert_eq!((epsilon() >> (|()| 1) >> MapResult(|i| Ok(i) as Result<_, ()>)).parse(""), Ok(1));
+    assert_eq!((fail_with_const(()) >> (|()| 1) >> MapResult(|i| Ok(i))).parse(""), Err(()));
+    assert_eq!((epsilon() >> MapResult(|_| Err(()) as Result<i32, _>)).parse(""), Err(()));
+    assert_eq!((epsilon() >> MapResult(|_| Err(()) as Result<i32, _>)).parse(""), Err(()));
 }
 
 #[test]
 fn test_map() {
-    assert_eq!(epsilon::<_, ()>().map(|()| 1).parse(""), Ok(1));
-    assert_eq!(fail_with_const(()).map(|()| 1).parse(""), Err(()));
+    assert_eq!((epsilon::<_, ()>() >> (|()| 1)).parse(""), Ok(1));
+    assert_eq!((fail_with_const(()) >> (|()| 1)).parse(""), Err(()));
     
-    let parser = tag(" test ").map(|s: &str| s.trim());
+    let parser = tag(" test ").map(|s: &str| s.trim());  // TODO: Find out why the operator version of `map` doesn't work.
     assert_eq!(parser.parse(" test "), Ok("test"));
     assert_eq!(parser.parse(" text "), Err(()));
 }
@@ -98,8 +98,8 @@ fn test_counted_separated() {
         ($(($range:expr) => [$($x:tt),+]),*) => {
             $(
                 let parser = tag::<_, (), _>("test").counted_separated::<Vec<_>, _, _>($range, tag(","));
-                let second_parser = parser.borrowed().followed_by(tag("!"));
-                let third_parser = parser.borrowed().followed_by(tag(",!"));
+                let second_parser = parser.borrowed() >> -tag("!");
+                let third_parser = parser.borrowed() >> -tag(",!");
                 print!("Currently at {:?} 0.", $range);
                 assert_eq!(parser.parse(""), subtest!(__impl () (0) $($x)*));
                 print!("0p!");
@@ -146,14 +146,14 @@ fn test_counted_separated() {
 
 #[test]
 fn test_maybe() {
-    let parser = tag::<_, (), _>("test").maybe();
+    let parser = tag::<_, (), _>("test") | ();
     assert_eq!(parser.parse("test"), Ok(Some("test")));
     assert_eq!(parser.parse(""), Ok(None));
 }
 
 #[test]
 fn test_record() {
-    let parser = tag("te").then(tag("st")).record();
+    let parser = (tag("te") >> tag("st")).record();
     assert_eq!(parser.parse("test"), Ok("test"));
     assert_eq!(parser.parse(""), Err(()));
 }
@@ -174,21 +174,21 @@ fn test_fail_with() {
 
 #[test]
 fn test_eof() {
-    let parser = eof().followed_by(tag("!").repeat::<NoCollection<_>, _>(..));
+    let parser = eof() >> -(tag("!").repeat::<NoCollection<_>, _>(..));
     assert_eq!(parser.parse(""), Ok(()));
     assert_eq!(parser.parse("!"), Err(()));
 }
 
 #[test]
 fn test_not() {
-    let parser = not(eof()).followed_by(tag("!").repeat::<NoCollection<_>, _>(..));
+    let parser = not(eof()) >> -(tag("!").repeat::<NoCollection<_>, _>(..));
     assert_eq!(parser.parse(""), Err(()));
     assert_eq!(parser.parse("!"), Ok(()));
 }
 
 #[test]
 fn test_record_while() {
-    let parser = record_while(|c: &char| c.is_alphabetic(), 1..=2).then(take(..));
+    let parser = record_while(|c: &char| c.is_alphabetic(), 1..=2) >> take(..);
     assert_eq!(parser.parse(""), Err(()));
     assert_eq!(parser.parse("1def"), Err(()));
     assert_eq!(parser.parse("abcdef"), Ok(("ab", "cdef")));

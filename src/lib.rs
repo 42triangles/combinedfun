@@ -1,11 +1,13 @@
-#![type_length_limit="1209804"]
 use std::marker::PhantomData;
+use std::ops;
 
 pub mod traits;
 pub use traits::{AltError, Collection, ConsumeError, EofError, HasEof, NotError, Position, RangeLike, Recordable, SplitFirst, Tag, TagError};
 
 pub mod types;
 pub use types::{Index, NoCollection, Pos, Span};
+
+pub mod combinators;
 
 #[cfg(test)]
 mod tests;
@@ -41,7 +43,7 @@ macro_rules! parser {
 #[macro_export]
 macro_rules! parser_dbg {
     ($parser:expr) => {
-        $parser.map_full(|rest, x| dbg!((rest, x)).1).map_err(|err| dbg!(err))
+        $parser.map_range_and_out(|rest, x| dbg!((rest, x)).1).map_err(|err| dbg!(err))
     }
 }
 
@@ -59,32 +61,32 @@ impl<F, I, O, E> Parser<F, I> where F: ParserImpl<I, Output = O, Error = E> {
 
     pub fn then<O2, F2>(self, next: Parser<F2, I>) -> parser!(<I, (O, O2), E>)
     where F2: ParserImpl<I, Output = O2, Error = E> {
-        Parser::new(move |input| self.0.apply(input).and_then(|(left, out1)| next.0.apply(left).map(|out2| (out2.0, (out1, out2.1)))))
+        self >> next
     }
 
     pub fn before<O2, F2>(self, main: Parser<F2, I>) -> parser!(<I, O2, E>)
     where F2: ParserImpl<I, Output = O2, Error = E> {
-        self.then(main).map(|(_, main_out)| main_out)
+        -self >> main
     }
 
     pub fn followed_by<F2>(self, next: Parser<F2, I>) -> parser!(<I, O, E>)
     where F2: ParserImpl<I, Error = E> {
-        self.then(next).map(|(main_out, _)| main_out)
+        self >> -next
     }
 
     pub fn or<F2>(self, alt: Parser<F2, I>) -> parser!(<I, O, E>)
     where F2: ParserImpl<I, Output = O, Error = E>, I: Clone, E: AltError<I> {
-        Parser::new(move |inp: I| self.0.apply(inp.clone()).or_else(|e1| alt.0.apply(inp.clone()).map_err(|e2| e1.alt(e2, inp))))
+        self | alt
     }
 
     pub fn map_result<O2, F2>(self, f: F2) -> parser!(<I, O2, E>)
     where F2: Fn(O) -> Result<O2, E> {
-        Parser::new(move |input| self.0.apply(input).and_then(|(l, o)| f(o).map(|new_o| (l, new_o))))
+        self >> MapResult(f)
     }
 
     pub fn map<O2, F2>(self, f: F2) -> parser!(<I, O2, E>)
     where F2: Fn(O) -> O2 {
-        self.map_result(move |o| Ok(f(o)))
+        self >> f
     }
 
     pub fn map_err<E2, F2>(self, f: F2) -> parser!(<I, O, E2>)
@@ -94,56 +96,12 @@ impl<F, I, O, E> Parser<F, I> where F: ParserImpl<I, Output = O, Error = E> {
 
     pub fn counted_separated<C, F2, R: RangeLike>(self, range: R, by: Parser<F2, I>) -> parser!(<I, (C, usize), E>)
     where F2: ParserImpl<I, Error = E>, C: Collection<Item = O>, I: Clone {
-        Parser::new(move |input: I| {
-            let with_by = by.borrowed().before(self.borrowed());
-
-            let mut out = C::with_capacity(range.capacity());
-
-            let mut count = 0;
-            let mut left = input;
-            let mut first = true;
-
-            macro_rules! parts {
-                {$(while $cond:ident { $out:ident => $inner:expr })*} => {
-                    $(
-                        while range.$cond(count) {
-                            let (new_left, item) = {
-                                let $out = if first {
-                                    first = false;
-                                    self.0.apply(left.clone())
-                                } else {
-                                    with_by.0.apply(left.clone())
-                                };
-                                $inner
-                            };
-                            left = new_left;
-                            out.push(count, item);
-                            count += 1;
-                        }
-                    )*
-                }
-            }
-
-            parts!{
-                while has_to_continue {
-                    out => out?
-                }
-
-                while can_continue {
-                    out => match out {
-                        Ok(next) => next,
-                        Err(_) => break,
-                    }
-                }
-            }
-
-            Ok((left, (out, count)))
-        })
+        Parser::new_generic(combinators::CountedSeparated(self.0, by.0, range, PhantomData))
     }
 
     pub fn separated<C, F2, R: RangeLike>(self, range: R, by: Parser<F2, I>) -> parser!(<I, C, E>)
     where F2: ParserImpl<I, Error = E>, C: Collection<Item = O>, I: Clone {
-        self.counted_separated(range, by).map(|(c, _)| c)
+        Parser::new_generic(combinators::MapLeft(combinators::CountedSeparated(self.0, by.0, range, PhantomData)))
     }
 
     pub fn const_separated<C, F2>(self, n: usize, by: Parser<F2, I>) -> parser!(<I, C, E>)
@@ -168,7 +126,7 @@ impl<F, I, O, E> Parser<F, I> where F: ParserImpl<I, Output = O, Error = E> {
 
     pub fn repeat<C, R: RangeLike>(self, range: R) -> parser!(<I, C, E>)
     where C: Collection<Item = O>, I: Clone {
-        self.counted_repeat(range).map(|(c, _)| c)
+        Parser::new_generic(combinators::MapLeft(combinators::CountedSeparated(self.0, combinators::Epsilon(PhantomData), range, PhantomData)))
     }
 
     pub fn const_repeat<C>(self, n: usize) -> parser!(<I, C, E>)
@@ -188,11 +146,7 @@ impl<F, I, O, E> Parser<F, I> where F: ParserImpl<I, Output = O, Error = E> {
 
     pub fn maybe(self) -> parser!(<I, Option<O>, E>)
     where I: Clone {
-        self.repeat(0..=1)
-    }
-
-    pub fn ignore(self) -> parser!(<I, (), E>) {
-        self.map(|_| ())
+        self | ()
     }
 
     pub fn record(self) -> parser!(<I, I::Output, E>)
@@ -208,7 +162,7 @@ impl<F, I, O, E> Parser<F, I> where F: ParserImpl<I, Output = O, Error = E> {
         self.map_err(E2::from)
     }
 
-    pub fn map_full<O2, F2>(self, f: F2) -> parser!(<I, O2, E>)
+    pub fn map_range_and_out<O2, F2>(self, f: F2) -> parser!(<I, O2, E>)
     where F2: Fn((&I, &I), O) -> O2, I: Clone {
         Parser::new(move |inp: I| {
             let inp_clone = inp.clone();
@@ -216,6 +170,14 @@ impl<F, I, O, E> Parser<F, I> where F: ParserImpl<I, Output = O, Error = E> {
                 let out = f((&inp_clone, &left), out);
                 (left, out)
             })
+        })
+    }
+
+    pub fn map_parser<O2, F2, F3>(self, f: F2) -> parser!(<I, O2, E>)
+    where F2: Fn(O) -> Parser<F3, I>, F3: ParserImpl<I, Output = O2, Error = E> {
+        Parser::new(move |inp: I| {
+            let (left, first_out) = self.0.apply(inp)?;
+            f(first_out).0.apply(left)
         })
     }
 
@@ -247,8 +209,110 @@ pub fn f<I, O, E>(func: fn(I) -> Result<(I, O), E>) -> FnParser<I, O, E> {
     Parser::new(func)
 }
 
+pub struct Ignored<F, I>(Parser<F, I>);
+
+impl<F, I> ops::Neg for Parser<F, I> {
+    type Output = Ignored<F, I>;
+
+    fn neg(self) -> Ignored<F, I> {
+        Ignored(self)
+    }
+}
+
+impl<F1, F2, I> ops::Shr<Parser<F2, I>> for Parser<F1, I> where F1: ParserImpl<I>, F2: ParserImpl<I, Error = F1::Error> {
+    type Output = Parser<combinators::Then<F1, F2>, I>;
+
+    fn shr(self, next: Parser<F2, I>) -> Self::Output {
+        Parser::new_generic(combinators::Then(self.0, next.0))
+    }
+}
+
+impl<F1, F2, I> ops::Shr<Ignored<F2, I>> for Parser<F1, I> where F1: ParserImpl<I>, F2: ParserImpl<I, Error = F1::Error> {
+    type Output = Parser<combinators::MapLeft<combinators::Then<F1, F2>>, I>;
+
+    fn shr(self, next: Ignored<F2, I>) -> Self::Output {
+        Parser::new_generic(combinators::MapLeft(combinators::Then(self.0, (next.0).0)))
+    }
+}
+
+impl<F1, F2, I> ops::Shr<Parser<F2, I>> for Ignored<F1, I> where F1: ParserImpl<I>, F2: ParserImpl<I, Error = F1::Error> {
+    type Output = Parser<combinators::MapRight<combinators::Then<F1, F2>>, I>;
+
+    fn shr(self, next: Parser<F2, I>) -> Self::Output {
+        Parser::new_generic(combinators::MapRight(combinators::Then((self.0).0, next.0)))
+    }
+}
+
+impl<F1, F2, I> ops::Shr<Ignored<F2, I>> for Ignored<F1, I> where F1: ParserImpl<I>, F2: ParserImpl<I, Error = F1::Error> {
+    type Output = Ignored<combinators::MapRight<combinators::Then<F1, F2>>, I>;
+
+    fn shr(self, next: Ignored<F2, I>) -> Self::Output {
+        Ignored(self >> next.0)
+    }
+}
+
+impl<F1, F2, I, O> ops::Shr<F2> for Parser<F1, I> where F1: ParserImpl<I>, F2: (Fn(F1::Output) -> O) {
+    type Output = Parser<combinators::Map<F1, F2>, I>;
+
+    fn shr(self, map: F2) -> Self::Output {
+        Parser::new_generic(combinators::Map(self.0, map))
+    }
+}
+
+pub struct MapResult<F>(pub F);
+
+impl<F1, F2, I, O> ops::Shr<MapResult<F2>> for Parser<F1, I> where F1: ParserImpl<I>, F2: Fn(F1::Output) -> Result<O, F1::Error> {
+    type Output = Parser<combinators::MapResult<F1, F2>, I>;
+
+    fn shr(self, map: MapResult<F2>) -> Self::Output {
+        Parser::new_generic(combinators::MapResult(self.0, map.0))
+    }
+}
+
+impl<F1, F2, I> ops::BitOr<Parser<F2, I>> for Parser<F1, I> where F1: ParserImpl<I>, F2: ParserImpl<I, Output = F1::Output, Error = F1::Error>, I: Clone, F1::Error: AltError<I> {
+    type Output = Parser<combinators::Or<F1, F2>, I>;
+
+    fn bitor(self, or: Parser<F2, I>) -> Self::Output {
+        Parser::new_generic(combinators::Or(self.0, or.0))
+    }
+}
+
+impl<F, I> ops::BitOr<()> for Parser<F, I> where F: ParserImpl<I>, I: Clone {
+    type Output = Parser<combinators::MapLeft<combinators::CountedSeparated<Option<F::Output>, ops::RangeInclusive<usize>, F, combinators::Epsilon<F::Error>>>, I>;
+
+    fn bitor(self, _: ()) -> Self::Output {
+        Parser::new_generic(combinators::MapLeft(combinators::CountedSeparated(self.0, combinators::Epsilon(PhantomData), 0..=1, PhantomData)))
+    }
+}
+
+pub struct ElementSeparator<E, S, I>(Parser<E, I>, Parser<S, I>);
+
+impl<F1, F2, I> ops::Div<Parser<F2, I>> for Parser<F1, I> {
+    type Output = ElementSeparator<F1, F2, I>;
+
+    fn div(self, separator: Parser<F2, I>) -> Self::Output {
+        ElementSeparator(self, separator)
+    }
+}
+
+impl<F1, F2, I, R> ops::Mul<R> for ElementSeparator<F1, F2, I> where F1: ParserImpl<I>, F2: ParserImpl<I, Error = F1::Error>, R: RangeLike, I: Clone {
+    type Output = Parser<combinators::MapLeft<combinators::CountedSeparated<Vec<F1::Output>, R, F1, F2>>, I>;
+
+    fn mul(self, range: R) -> Self::Output {
+        Parser::new_generic(combinators::MapLeft(combinators::CountedSeparated((self.0).0, (self.1).0, range, PhantomData)))
+    }
+}
+
+impl<F1, I, R> ops::Mul<R> for Parser<F1, I> where F1: ParserImpl<I>, R: RangeLike, I: Clone {
+    type Output = Parser<combinators::MapLeft<combinators::CountedSeparated<Vec<F1::Output>, R, F1, combinators::Epsilon<F1::Error>>>, I>;
+
+    fn mul(self, range: R) -> Self::Output {
+        self / Parser::new_generic(combinators::Epsilon(PhantomData)) * range
+    }
+}
+
 pub fn epsilon<I, E>() -> parser!(<I, (), E>) {
-    Parser::new(|inp| Ok((inp, ())))
+    Parser::new_generic(combinators::Epsilon(PhantomData))
 }
 
 pub fn tag<'a, I, E, T: ?Sized>(tag: &'a T) -> parser!(<I, T::Output, E> + 'a)
@@ -299,7 +363,7 @@ where I: SplitFirst + Clone, F: Fn(&I::Element) -> bool, E: ConsumeError<I> {
 
 pub fn consume_while<I, E, F, R: RangeLike>(f: F, r: R) -> parser!(<I, (), E>)
 where I: SplitFirst, F: Fn(&I::Element) -> bool, E: ConsumeError<I>, I: Clone {
-    consume_one_where(f).repeat::<NoCollection<_>, _>(r).ignore()
+    consume_one_where(f).repeat::<NoCollection<_>, _>(r).map(|_| ())
 }
 
 pub fn record_while<I, E, F, R: RangeLike>(f: F, r: R) -> parser!(<I, I::Output, E>)
