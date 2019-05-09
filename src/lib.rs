@@ -193,14 +193,6 @@ impl<F, I, O, E> Parser<F, I> where F: ParserImpl<I, Output = O, Error = E> {
     where I: HasEof, E: EofError<I> {
         self.borrowed().followed_by(eof()).parse_partial(input).map(|(_, o)| o)
     }
-
-    pub fn get_inner(&self) -> &F {
-        &self.0
-    }
-
-    pub fn move_inner(self) -> F {
-        self.0
-    }
 }
 
 pub type FnParser<I, O, E> = Parser<fn(I) -> Result<(I, O), E>, I>;
