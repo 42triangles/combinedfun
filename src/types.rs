@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 
 use super::{AltError, Collection, ConsumeError, EofError, HasEof, NotError, Position, Recordable, SplitFirst, Tag, TagError};
 
+/// Used to not store the elements in repeating parsers.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct NoCollection<T>(PhantomData<T>);
 
@@ -15,6 +16,7 @@ impl<T> Collection for NoCollection<T> {
     fn push(&mut self, _: usize, _: Self::Item) { }
 }
 
+/// This input type keeps track of the position within the input it wraps.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Span<I, P>(pub I, pub P);
 
@@ -62,6 +64,7 @@ impl<I: Clone, P: Position<I>, T: Tag<I>> Tag<Span<I, P>> for T {
     }
 }
 
+/// This position type only keeps track of the index.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Index(pub usize);
 
@@ -83,10 +86,11 @@ impl<'a, T> Position<&'a [T]> for Index {
     }
 }
 
+/// This position type keeps track of the line, column and index.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Pos {
     pub line: usize,
-    pub chars_in_line: usize,
+    pub column: usize,
     pub index: usize,
 }
 
@@ -94,7 +98,7 @@ impl Default for Pos {
     fn default() -> Self {
         Pos {
             line: 0,
-            chars_in_line: 0,
+            column: 0,
             index: 0,
         }
     }
@@ -109,9 +113,9 @@ impl<'a> Position<&'a str> for Pos {
         for i in old[..(old.len() - new.len())].chars() {
             if i == '\n' {
                 out.line += 1;
-                out.chars_in_line = 0;
+                out.column = 0;
             } else {
-                out.chars_in_line += 1;
+                out.column += 1;
             }
         }
         out

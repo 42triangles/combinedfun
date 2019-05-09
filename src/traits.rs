@@ -1,5 +1,6 @@
 use std::ops::{Bound, RangeBounds};
 
+/// The kind of error that can happen with `Parser::or`(crate::Parser::or).
 pub trait AltError<I> {
     fn alt(self, other: Self, at: I) -> Self;
 }
@@ -8,9 +9,11 @@ impl<I> AltError<I> for () {
     fn alt(self, _: (), _: I) { }
 }
 
+/// Implemented for types that can be tags of the input `I`.
 pub trait Tag<I> {
     type Output;
 
+    /// The return type is reversed, since the tag is the beginning of the input.
     fn parse_tag(&self, inp: I) -> Option<(Self::Output, I)>;
 }
 
@@ -46,6 +49,7 @@ impl<'a> Tag<&'a [u8]> for str {
     }
 }
 
+/// The kind of error that can happen with `tag`(crate::tag).
 pub trait TagError<'a, T: ?Sized, I> {
     fn tag(tag: &'a T, at: I) -> Self;
 }
@@ -54,10 +58,18 @@ impl<'a, I, T: ?Sized> TagError<'a, T, I> for () {
     fn tag(_: &'a T, _: I) { }
 }
 
+/// This trait is implemented for all types that implement [`RangeBounds`](RangeBounds).
+///
+/// In most circumstances, you shouldn't implement it yourself, although there are certainly
+/// applications.
 pub trait RangeLike {
     fn can_continue(&self, n: usize) -> bool;
     fn has_to_continue(&self, n: usize) -> bool;
-    fn capacity(&self) -> usize;
+
+    /// The capacity the container should start with
+    fn capacity(&self) -> usize {
+        0
+    }
 }
 
 fn continue_from_bound(n: usize, bound: Bound<&usize>, unbounded: bool) -> bool {
@@ -90,6 +102,7 @@ impl<T> RangeLike for T where T: RangeBounds<usize> {
     }
 }
 
+/// This trait is implemented for collections you can push to.
 pub trait Collection {
     type Item;
 
@@ -143,6 +156,7 @@ macro_rules! collection_impl {
 
 collection_impl!(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32);
 
+/// This trait allows checking if an input has reached its end.
 pub trait HasEof {
     fn at_eof(&self) -> bool;
 }
@@ -159,6 +173,7 @@ impl<'a, T> HasEof for &'a [T] {
     }
 }
 
+/// The kind of error that can happen with `eof`(crate::eof).
 pub trait EofError<I> {
     fn no_eof(at: I) -> Self;
 }
@@ -167,6 +182,7 @@ impl<I> EofError<I> for () {
     fn no_eof(_: I) { }
 }
 
+/// The kind of error that can happen with `not`(crate::not).
 pub trait NotError<O, I> {
     fn not(out: O, at: I) -> Self;
 }
@@ -175,6 +191,7 @@ impl<O, I> NotError<O, I> for () {
     fn not(_: O, _: I) { }
 }
 
+/// This trait allows recording what part of an input was consumed by a parser.
 pub trait Recordable {
     type Output;
 
@@ -197,6 +214,7 @@ impl<'a, T> Recordable for &'a [T] {
     }
 }
 
+/// This trait allows removing the first element from the input.
 pub trait SplitFirst: Sized {
     type Element;
 
@@ -219,6 +237,7 @@ impl<'a, T> SplitFirst for &'a [T] {
     }
 }
 
+/// The kind of error that can happen with `Parser::record_while`(crate::record_while).
 pub trait ConsumeError<I: SplitFirst> {
     fn eof(at: I) -> Self;
     fn condition_failed(element: I::Element, at: I) -> Self;
@@ -229,6 +248,7 @@ impl<I: SplitFirst> ConsumeError<I> for () {
     fn condition_failed(_: I::Element, _: I) { }
 }
 
+/// Used to track positions in a [`Span`](crate::types::Span).
 pub trait Position<I>: Default {
     fn record_difference(&self, old: &I, new: &I) -> Self;
 }

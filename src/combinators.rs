@@ -1,3 +1,5 @@
+//! These combinators all correspond to one function (with some extra argument sometimes)
+
 use std::marker::PhantomData;
 
 use super::{AltError, Collection, MapResult as MapResultMarker, Parser, ParserImpl, RangeLike};
