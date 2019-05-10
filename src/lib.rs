@@ -125,6 +125,8 @@ impl<F, I, O, E> ParserImpl<I> for F where F: Fn(I) -> Result<(I, O), E> {
 /// * [`consume_while`](consume_while). Consumes elements/characters of the input that match the given condition. Its given a range, which acts like the range given to other repeating combinators.
 /// * [`record_while`](record_while). Like [`consume_while`](consume_while), but returns the matched substring.
 /// * [`take`](take). Consumes the rest of the input, and returns the matched string.
+/// * [`lookahead`](lookahead). Outputs the result of the given parser without consuming it.
+/// * [`output`](output). Outputs the output of the given function, or fails if the function returns [`Err`](Err).
 pub struct Parser<F, I>(F, PhantomData<fn(I)>);
 
 /// The parser macro allows you to easily write the type of a parser in a return position, using
