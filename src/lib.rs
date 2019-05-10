@@ -56,6 +56,8 @@ pub use types::{Index, NoCollection, Pos, Span};
 
 pub mod combinators;
 
+pub mod str_parsers;
+
 #[cfg(test)]
 mod tests;
 
