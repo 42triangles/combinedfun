@@ -418,7 +418,7 @@ impl<F, I, O, E> Parser<F, I> where F: ParserImpl<I, Output = O, Error = E> {
 }
 
 /// A shortcut for parsers that are defined by functions.
-pub type FnParser<I, O, E> = Parser<fn(I) -> Result<(I, O), E>, I>;
+pub type FnParser<I, O, E> = Parser<fn(input: I) -> Result<(I, O), E>, I>;
 
 /// Creates an [`FnParser`](FnParser) from a function.
 pub fn f<I, O, E>(func: fn(I) -> Result<(I, O), E>) -> FnParser<I, O, E> {
