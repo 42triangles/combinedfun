@@ -3,9 +3,9 @@ use super::*;
 #[test]
 fn test_parse_simple() {
     assert_eq!(Parser::new(|_| Err(()) as Result<(_, ()), _>).parse("test"), Err(()));
-    assert_eq!(Parser::new(|_| Ok(("", ())) as Result<_, ()>).parse("test"), Ok(()));
+    assert_eq!((parser_hint!(<Error = ()>) >> Parser::new(|_| Ok(("", ())))).parse("test"), Ok(()));
     assert_eq!(Parser::new(|i| Ok((i, ()))).parse("test"), Err(()));
-    assert_eq!(Parser::new(|i| Ok((i, ())) as Result<_, ()>).parse(""), Ok(()));
+    assert_eq!((parser_hint!(<Error = ()>) >> Parser::new(|i| Ok((i, ())))).parse(""), Ok(()));
 }
 
 #[test]
@@ -61,7 +61,7 @@ fn test_or() {
 
 #[test]
 fn test_map_result() {
-    assert_eq!((epsilon() >> (|()| 1) >> MapResult(|i| Ok(i) as Result<_, ()>)).parse(""), Ok(1));
+    assert_eq!((parser_hint!(<Error = ()>) >> epsilon() >> (|()| 1) >> MapResult(|i| Ok(i))).parse(""), Ok(1));
     assert_eq!((fail_with_const(()) >> (|()| 1) >> MapResult(|i| Ok(i))).parse(""), Err(()));
     assert_eq!((epsilon() >> MapResult(|_| Err(()) as Result<i32, _>)).parse(""), Err(()));
     assert_eq!((epsilon() >> MapResult(|_| Err(()) as Result<i32, _>)).parse(""), Err(()));
@@ -69,7 +69,7 @@ fn test_map_result() {
 
 #[test]
 fn test_map() {
-    assert_eq!((epsilon::<_, ()>() >> (|()| 1)).parse(""), Ok(1));
+    assert_eq!((parser_hint!(<Error = ()>) >> epsilon() >> (|()| 1)).parse(""), Ok(1));
     assert_eq!((fail_with_const(()) >> (|()| 1)).parse(""), Err(()));
     
     let parser = tag(" test ").map(|s: &str| s.trim());  // TODO: Find out why the operator version of `map` doesn't work.
@@ -97,7 +97,7 @@ fn test_counted_separated() {
         };
         ($(($range:expr) => [$($x:tt),+]),*) => {
             $(
-                let parser = tag::<_, (), _>("test").counted_separated::<Vec<_>, _, _>($range, tag(","));
+                let parser = parser_hint!(<Error = ()>) >> tag("test").counted_separated::<Vec<_>, _, _>($range, tag(","));
                 let second_parser = parser.borrowed() >> -tag("!");
                 let third_parser = parser.borrowed() >> -tag(",!");
                 print!("Currently at {:?} 0.", $range);
@@ -146,7 +146,7 @@ fn test_counted_separated() {
 
 #[test]
 fn test_maybe() {
-    let parser = tag::<_, (), _>("test") | ();
+    let parser = parser_hint!(<Error = ()>) >> tag("test") | ();
     assert_eq!(parser.parse("test"), Ok(Some("test")));
     assert_eq!(parser.parse(""), Ok(None));
 }
@@ -201,4 +201,28 @@ fn test_take() {
     assert_eq!(parser.parse(""), Err(()));
     assert_eq!(parser.parse("x"), Ok("x"));
     assert_eq!(parser.parse("xx"), Err(()));
+}
+
+#[test]
+fn test_lookahead() {
+    let parser = lookahead(epsilon() >> -consume_while(|c: &char| c.is_alphabetic(), ..) >> -tag("!"));
+    assert_eq!(parser.parse_partial("abc!x"), Ok(("abc!x", ())));
+    assert_eq!(parser.parse_partial("abc!"), Ok(("abc!", ())));
+    assert_eq!(parser.parse_partial("abcx"), Err(()));
+
+    let parser = lookahead(epsilon() >> -consume_while(|c: &char| c.is_alphabetic(), ..) >> -tag("!") >> -eof());
+    assert_eq!(parser.parse_partial("abc!x"), Err(()));
+    assert_eq!(parser.parse_partial("abc!"), Ok(("abc!", ())));
+    assert_eq!(parser.parse_partial("abcx"), Err(()));
+}
+
+#[test]
+fn test_output() {
+    let parser = parser_hint!(<Error = ()>) >> output(|| Ok(()));
+    assert_eq!(parser.parse_partial("abc"), Ok(("abc", ())));
+    assert_eq!(parser.parse_partial(""), Ok(("", ())));
+
+    let parser = output(|| Err(()) as Result<(), _>);
+    assert_eq!(parser.parse_partial("abc"), Err(()));
+    assert_eq!(parser.parse_partial(""), Err(()));
 }

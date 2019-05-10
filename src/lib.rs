@@ -153,6 +153,24 @@ macro_rules! parser_dbg {
     }
 }
 
+/// Allows helping Rusts type inference by returning an [ε](epsilon) parser with the given type
+/// parameters. This is intended to be used with the overloaded operators.
+#[macro_export]
+macro_rules! parser_hint {
+    (<Input = $I:ty, Error = $E:ty>) => {
+        -epsilon::<$I, $E>()
+    };
+    (<Error = $E:ty, Input = $I:ty>) => {
+        parser_hint!(<Input = $I, Error = $E>)
+    };
+    (<Input = $I:ty>) => {
+        parser_hint!(<Input = $I, Error = _>)
+    };
+    (<Error = $E:ty>) => {
+        parser_hint!(<Input = _, Error = $E>)
+    };
+}
+
 impl<F, I, O, E> Parser<F, I> where F: Fn(I) -> Result<(I, O), E> {
     /// This function allows you to create a new parser. If you wrote your own type which
     /// implements [`ParserImpl`](ParserImpl), use [`Parser::new_generic`](Parser::new_generic).
@@ -606,4 +624,19 @@ where I: SplitFirst, F: Fn(&I::Element) -> bool, E: ConsumeError<I>, I: Clone + 
 pub fn take<I, E, R: RangeLike>(r: R) -> parser!(<I, I::Output, E>)
 where I: SplitFirst, E: ConsumeError<I>, I: Clone + Recordable {
     record_while(|_| true, r)
+}
+
+/// Outputs the result of the given parser without consuming it.
+pub fn lookahead<I, F>(f: Parser<F, I>) -> parser!(<I, F::Output, F::Error>)
+where F: ParserImpl<I>, I: Clone {
+    Parser::new(move |inp: I| {
+        let left = inp.clone();
+        f.0.apply(inp).map(|(_, out)| (left, out))
+    })
+}
+
+/// Outputs the output of the given function, or fails if the function returns [`Err`](Err).
+pub fn output<I, O, E, F>(f: F) -> parser!(<I, O, E>)
+where F: Fn() -> Result<O, E> {
+    Parser::new(move |inp: I| f().map(|out| (inp, out)))
 }
