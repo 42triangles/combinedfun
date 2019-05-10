@@ -5,7 +5,7 @@
 //! [`nom`](https://github.com/geal/nom) first.
 //!
 //! This library doesn't use macros, so it is a bit limited for some applications (specifically
-//! places where you can use `map_parser` are rather limited).
+//! places where you can use [`map_parser`](Parser::map_parser) are rather limited).
 //!
 //! It also uses operator overloading for writing parsers that are easy to read and write.
 //!
