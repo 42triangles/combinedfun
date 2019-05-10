@@ -506,8 +506,12 @@ impl<F1, F2, I> ops::BitOr<Parser<F2, I>> for Parser<F1, I> where F1: ParserImpl
     }
 }
 
+type InclusiveUsizeRange = ops::RangeInclusive<usize>;
+
+type WithManyCombinator<I, O, R, F, S> = Parser<combinators::MapLeft<combinators::CountedSeparated<O, R, F, S>>, I>;
+
 impl<F, I> ops::BitOr<()> for Parser<F, I> where F: ParserImpl<I>, I: Clone {
-    type Output = Parser<combinators::MapLeft<combinators::CountedSeparated<Option<F::Output>, ops::RangeInclusive<usize>, F, combinators::Epsilon<F::Error>>>, I>;
+    type Output = WithManyCombinator<I, Option<F::Output>, InclusiveUsizeRange, F, combinators::Epsilon<F::Error>>;
 
     fn bitor(self, _: ()) -> Self::Output {
         Parser::new_generic(combinators::MapLeft(combinators::CountedSeparated(self.0, combinators::Epsilon(PhantomData), 0..=1, PhantomData)))
@@ -528,7 +532,7 @@ impl<F1, F2, I> ops::Div<Parser<F2, I>> for Parser<F1, I> {
 }
 
 impl<F1, F2, I, R> ops::Mul<R> for ElementSeparator<F1, F2, I> where F1: ParserImpl<I>, F2: ParserImpl<I, Error = F1::Error>, R: RangeLike, I: Clone {
-    type Output = Parser<combinators::MapLeft<combinators::CountedSeparated<Vec<F1::Output>, R, F1, F2>>, I>;
+    type Output = WithManyCombinator<I, Vec<F1::Output>, R, F1, F2>;
 
     fn mul(self, range: R) -> Self::Output {
         Parser::new_generic(combinators::MapLeft(combinators::CountedSeparated((self.0).0, (self.1).0, range, PhantomData)))
@@ -536,7 +540,7 @@ impl<F1, F2, I, R> ops::Mul<R> for ElementSeparator<F1, F2, I> where F1: ParserI
 }
 
 impl<F1, I, R> ops::Mul<R> for Parser<F1, I> where F1: ParserImpl<I>, R: RangeLike, I: Clone {
-    type Output = Parser<combinators::MapLeft<combinators::CountedSeparated<Vec<F1::Output>, R, F1, combinators::Epsilon<F1::Error>>>, I>;
+    type Output = WithManyCombinator<I, Vec<F1::Output>, R, F1, combinators::Epsilon<F1::Error>>;
 
     fn mul(self, range: R) -> Self::Output {
         self / Parser::new_generic(combinators::Epsilon(PhantomData)) * range
