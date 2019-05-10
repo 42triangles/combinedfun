@@ -53,7 +53,7 @@ impl<I: Clone + SplitFirst, P: Position<I>> SplitFirst for Span<I, P> {
     }
 }
 
-impl<I: Clone, P: Position<I>, T: Tag<I>> Tag<Span<I, P>> for T {
+impl<I: Clone, P: Position<I>, T: Tag<I> + ?Sized> Tag<Span<I, P>> for T {
     type Output = <T as Tag<I>>::Output;
 
     fn parse_tag(&self, inp: Span<I, P>) -> Option<(Self::Output, Span<I, P>)> {
@@ -123,7 +123,7 @@ impl<'a> Position<&'a str> for Pos {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub enum VerboseErrorKind<'a, I, O, T=I> {
+pub enum VerboseErrorKind<'a, I, O, T: ?Sized> {
     Alt(Box<[VerboseError<'a, I, O, T>;2]>),
     Tag(&'a T),
     NoEof,
@@ -133,12 +133,12 @@ pub enum VerboseErrorKind<'a, I, O, T=I> {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub struct VerboseError<'a, I, O, T=I> {
+pub struct VerboseError<'a, I, O, T: ?Sized> {
     pub kind: VerboseErrorKind<'a, I, O, T>,
     pub left: I,
 }
 
-impl<'a, I, O, T> VerboseError<'a, I, O, T> {
+impl<'a, I, O, T: ?Sized> VerboseError<'a, I, O, T> {
     fn new<OI>(kind: VerboseErrorKind<'a, I, O, T>, at: OI) -> Self where I: From<OI> {
         VerboseError {
             kind,
@@ -147,31 +147,31 @@ impl<'a, I, O, T> VerboseError<'a, I, O, T> {
     }
 }
 
-impl<'a, OI, I, O, T> AltError<OI> for VerboseError<'a, I, O, T> where I: From<OI> {
+impl<'a, OI, I, O, T: ?Sized> AltError<OI> for VerboseError<'a, I, O, T> where I: From<OI> {
     fn alt(self, other: Self, at: OI) -> Self {
         Self::new(VerboseErrorKind::Alt(Box::new([self, other])), at)
     }
 }
 
-impl<'a, OI, I, O, T> TagError<'a, T, OI> for VerboseError<'a, I, O, T> where I: From<OI> {
+impl<'a, OI, I, O, T: ?Sized> TagError<'a, T, OI> for VerboseError<'a, I, O, T> where I: From<OI> {
     fn tag(tag: &'a T, at: OI) -> Self {
         Self::new(VerboseErrorKind::Tag(tag), at)
     }
 }
 
-impl<'a, OI, I, O, T> EofError<OI> for VerboseError<'a, I, O, T> where I: From<OI> {
+impl<'a, OI, I, O, T: ?Sized> EofError<OI> for VerboseError<'a, I, O, T> where I: From<OI> {
     fn no_eof(at: OI) -> Self {
         Self::new(VerboseErrorKind::NoEof, at)
     }
 }
 
-impl<'a, OO, OI, I, O, T> NotError<OO, OI> for VerboseError<'a, I, O, T> where I: From<OI>, O: From<OO> {
+impl<'a, OO, OI, I, O, T: ?Sized> NotError<OO, OI> for VerboseError<'a, I, O, T> where I: From<OI>, O: From<OO> {
     fn not(out: OO, at: OI) -> Self {
         Self::new(VerboseErrorKind::Not(out.into()), at)
     }
 }
 
-impl<'a, OI: SplitFirst, I, O, T> ConsumeError<OI> for VerboseError<'a, I, O, T> where I: From<OI> {
+impl<'a, OI: SplitFirst, I, O, T: ?Sized> ConsumeError<OI> for VerboseError<'a, I, O, T> where I: From<OI> {
     fn eof(at: OI) -> Self {
         Self::new(VerboseErrorKind::Eof, at)
     }

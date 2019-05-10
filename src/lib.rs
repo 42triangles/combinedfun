@@ -140,10 +140,10 @@ pub struct Parser<F, I>(F, PhantomData<fn(I)>);
 #[macro_export]
 macro_rules! parser {
     (<$i:ty, $o:ty, $e:ty> + $lt:tt) => {
-        Parser<impl ParserImpl<$i, Output = $o, Error = $e> + $lt, $i>
+        $crate::Parser<impl $crate::ParserImpl<$i, Output = $o, Error = $e> + $lt, $i>
     };
     (<$i:ty, $o:ty, $e:ty>) => {
-        Parser<impl ParserImpl<$i, Output = $o, Error = $e>, $i>
+        $crate::Parser<impl $crate::ParserImpl<$i, Output = $o, Error = $e>, $i>
     };
 }
 
@@ -153,7 +153,13 @@ macro_rules! parser {
 #[macro_export]
 macro_rules! parser_dbg {
     ($parser:expr) => {
-        $parser.map_range_and_out(|rest, x| dbg!((rest, x)).1).map_err(|err| dbg!(err))
+        $crate::Parser::map_err(
+            $crate::Parser::map_range_and_out(
+                $parser,
+                |rest, x| dbg!((rest, x)).1
+            ),
+            |err| dbg!(err)
+        )
     }
 }
 
@@ -162,7 +168,7 @@ macro_rules! parser_dbg {
 #[macro_export]
 macro_rules! parser_hint {
     (<Input = $I:ty, Error = $E:ty>) => {
-        -epsilon::<$I, $E>()
+        -$crate::epsilon::<$I, $E>()
     };
     (<Error = $E:ty, Input = $I:ty>) => {
         parser_hint!(<Input = $I, Error = $E>)
