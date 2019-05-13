@@ -27,7 +27,7 @@ impl fmt::Display for Value {
                     if first {
                         first = false;
                     } else {
-                        write!(f, ", ")?;
+                        write!(f, " ")?;
                     }
                     write!(f, "{}", i)?;
                 }
@@ -101,7 +101,7 @@ fn parse_partial(i: ParserInput) -> ParserResult<Value> {
     fn list(i: ParserInput) -> ParserResult<Vec<Value>> {
         (
             -cf::tag("(")
-            >> cf::f(parse_partial) / sp::ws(1..) * ..
+            >> cf::f(parse_partial) / sp::ws(1..) * Vec::new * ..
             >> -sp::ws(..)
             >> -cf::tag(")")
         ).parse_partial(i)

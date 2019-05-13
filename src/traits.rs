@@ -106,15 +106,15 @@ impl<T> RangeLike for T where T: RangeBounds<usize> {
 pub trait Collection {
     type Item;
 
-    fn with_capacity(capacity: usize) -> Self;
+    fn reserve(&mut self, additional: usize);
     fn push(&mut self, index: usize, item: Self::Item);
 }
 
 impl<T> Collection for Vec<T> {
     type Item = T;
 
-    fn with_capacity(capacity: usize) -> Self {
-        Self::with_capacity(capacity)
+    fn reserve(&mut self, additional: usize) {
+        self.reserve(additional);
     }
 
     fn push(&mut self, _: usize, item: Self::Item) {
@@ -125,9 +125,8 @@ impl<T> Collection for Vec<T> {
 impl<T> Collection for Option<T> {
     type Item = T;
 
-    fn with_capacity(capacity: usize) -> Self {
-        assert!(capacity <= 1);
-        None
+    fn reserve(&mut self, additional: usize) {
+        assert!(additional <= 1);
     }
 
     fn push(&mut self, _: usize, item: Self::Item) {
@@ -141,9 +140,8 @@ macro_rules! collection_impl {
             impl<T> Collection for [T;$n] where T: Default {
                 type Item = T;
 
-                fn with_capacity(capacity: usize) -> Self {
-                    assert!(capacity <= $n);
-                    Self::default()
+                fn reserve(&mut self, additional: usize) {
+                    assert!(additional <= $n);
                 }
 
                 fn push(&mut self, index: usize, item: Self::Item) {

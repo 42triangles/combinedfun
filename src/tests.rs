@@ -97,7 +97,7 @@ fn test_counted_separated() {
         };
         ($(($range:expr) => [$($x:tt),+]),*) => {
             $(
-                let parser = parser_hint!(<Error = ()>) >> tag("test").counted_separated::<Vec<_>, _, _>($range, tag(","));
+                let parser = parser_hint!(<Error = ()>) >> tag("test").counted_separated($range, tag(","), Vec::new);
                 let second_parser = parser.borrowed() >> -tag("!");
                 let third_parser = parser.borrowed() >> -tag(",!");
                 print!("Currently at {:?} 0.", $range);
@@ -174,14 +174,14 @@ fn test_fail_with() {
 
 #[test]
 fn test_eof() {
-    let parser = eof() >> -(tag("!").repeat::<NoCollection<_>, _>(..));
+    let parser = eof() >> -(tag("!") * NoCollection::new * ..);
     assert_eq!(parser.parse(""), Ok(()));
     assert_eq!(parser.parse("!"), Err(()));
 }
 
 #[test]
 fn test_not() {
-    let parser = not(eof()) >> -(tag("!").repeat::<NoCollection<_>, _>(..));
+    let parser = not(eof()) >> -(tag("!") * NoCollection::new * ..);
     assert_eq!(parser.parse(""), Err(()));
     assert_eq!(parser.parse("!"), Ok(()));
 }

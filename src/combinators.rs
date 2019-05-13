@@ -47,20 +47,25 @@ impl<I, A, B> ParserImpl<I> for Or<A, B> where I: Clone, A: ParserImpl<I>, B: Pa
     }
 }
 
-pub struct CountedSeparated<C, R, F1, F2>(pub(crate) F1, pub(crate) F2, pub(crate) R, pub(crate) PhantomData<fn() -> C>);
+pub struct CountedSeparated<CG, R, F1, F2> {
+    pub(crate) main_parser: F1,
+    pub(crate) separator: F2,
+    pub(crate) range: R,
+    pub(crate) collection_generator: CG
+}
 
-impl<I, C, R, F1, F2> ParserImpl<I> for CountedSeparated<C, R, F1, F2> where I: Clone, C: Collection<Item = F1::Output>, R: RangeLike, F1: ParserImpl<I>, F2: ParserImpl<I, Error = F1::Error> {
+impl<I, CG, C, R, F1, F2> ParserImpl<I> for CountedSeparated<CG, R, F1, F2> where I: Clone, C: Collection<Item = F1::Output>, R: RangeLike, F1: ParserImpl<I>, F2: ParserImpl<I, Error = F1::Error>, CG: Fn() -> C {
     type Output = (C, usize);
     type Error = F1::Error;
 
     fn apply(&self, inp: I) -> Result<(I, Self::Output), Self::Error> {
-        let element = to_parser!(self.0);
-        let separator = to_parser!(self.1);
-        let range = &self.2;
+        let element = to_parser!(self.main_parser);
+        let separator = to_parser!(self.separator);
 
         let with_separator = separator.before(element.borrowed());
 
-        let mut out = C::with_capacity(range.capacity());
+        let mut out = (self.collection_generator)();
+        out.reserve(self.range.capacity());
 
         let mut count = 0;
         let mut left = inp;
@@ -69,7 +74,7 @@ impl<I, C, R, F1, F2> ParserImpl<I> for CountedSeparated<C, R, F1, F2> where I: 
         macro_rules! parts {
             {$(while $cond:ident { $out:ident => $inner:expr })*} => {
                 $(
-                    while range.$cond(count) {
+                    while self.range.$cond(count) {
                         let (new_left, item) = {
                             let $out = if first {
                                 first = false;

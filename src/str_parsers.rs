@@ -17,13 +17,13 @@ where E: ConsumeError<I>, I: SplitFirst<Element = char> + Clone {
 /// Records characters that are in `s`.
 pub fn while_one_of<'a, I: 'a, E: 'a, R: RangeLike + 'a>(s: &'a str, r: R) -> parser!(<I, I::Output, E> + 'a)
 where E: ConsumeError<I>, I: SplitFirst<Element = char> + Recordable + Clone {
-    one_of(s).repeat::<NoCollection<_>, _>(r).record()
+    (one_of(s) * NoCollection::new * r).record()
 }
 
 /// Records characters that are not in `s`.
 pub fn while_not_one_of<'a, I: 'a, E: 'a, R: RangeLike + 'a>(s: &'a str, r: R) -> parser!(<I, I::Output, E> + 'a)
 where E: ConsumeError<I>, I: SplitFirst<Element = char> + Recordable + Clone {
-    not_one_of(s).repeat::<NoCollection<_>, _>(r).record()
+    (not_one_of(s) * NoCollection::new * r).record()
 }
 
 /// Records whitespace, *including newlines*.

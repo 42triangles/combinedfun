@@ -6,12 +6,16 @@ use super::{AltError, Collection, ConsumeError, EofError, HasEof, NotError, Posi
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct NoCollection<T>(PhantomData<T>);
 
+impl<T> NoCollection<T> {
+    pub fn new() -> Self {
+        NoCollection(PhantomData)
+    }
+}
+
 impl<T> Collection for NoCollection<T> {
     type Item = T;
 
-    fn with_capacity(_: usize) -> Self {
-        NoCollection(PhantomData)
-    }
+    fn reserve(&mut self, _: usize) { }
 
     fn push(&mut self, _: usize, _: Self::Item) { }
 }

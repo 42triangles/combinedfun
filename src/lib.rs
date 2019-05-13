@@ -106,12 +106,12 @@ impl<F, I, O, E> ParserImpl<I> for F where F: Fn(I) -> Result<(I, O), E> {
 /// | combinator                                                 | has separator | has range | returns outputs | returns count | syntactic sugar |
 /// |------------------------------------------------------------|-----|------------|-----|-----|------|
 /// | [`counted_separated`](Parser::counted_separated)           | yes | yes        | yes | yes | none |
-/// | [`separated`](Parser::separated)                           | yes | yes        | yes | no  | [`/ sep`](#impl-Div<Parser<F2%2C%20I>>) [`* range`](struct.ElementSeparator.html#impl-Mul<R>) |
+/// | [`separated`](Parser::separated)                           | yes | yes        | yes | no  | [`/ sep`](#impl-Div<Parser<F2%2C%20I>>) [`* new_collection`](struct.ElementSeparator#impl-Mul<CG>) [`* range`](struct.WithCollectionGenerator.html#impl-Mul<R>) |
 /// | [`const_separated`](Parser::const_separated)               | yes | one number | yes | no  | none |
 /// | [`count_separated_within`](Parser::count_separated_within) | yes | yes        | no  | yes | none |
 /// | [`count_separated`](Parser::count_separated)               | yes | no         | no  | yes | none |
 /// | [`counted_repeat`](Parser::counted_repeat)                 | no  | yes        | yes | yes | none |
-/// | [`repeat`](Parser::repeat)                                 | no  | yes        | yes | no  | [`*`](#impl-Mul<R>) |
+/// | [`repeat`](Parser::repeat)                                 | no  | yes        | yes | no  | [`* new_collection`](#impl-Mul<CG>) [`* range`](struct.WithCollectionGenerator.html#impl-Mul<R>) |
 /// | [`const_repeat`](Parser::const_repeat)                     | no  | one number | yes | no  | none |
 /// | [`count_within`](Parser::count_within)                     | no  | yes        | no  | yes | none |
 /// | [`count`](Parser::count)                                   | no  | no         | no  | yes | none |
@@ -267,9 +267,14 @@ impl<F, I, O, E> Parser<F, I> where F: ParserImpl<I, Output = O, Error = E> {
     /// Should this be impossible, it fails.
     ///
     /// Please read the notes in the documentation for [this type](Parser).
-    pub fn counted_separated<C, F2, R: RangeLike>(self, range: R, by: Parser<F2, I>) -> parser!(<I, (C, usize), E>)
-    where F2: ParserImpl<I, Error = E>, C: Collection<Item = O>, I: Clone {
-        Parser::new_generic(combinators::CountedSeparated(self.0, by.0, range, PhantomData))
+    pub fn counted_separated<C, F2, R: RangeLike, CG>(self, range: R, by: Parser<F2, I>, collection_generator: CG) -> parser!(<I, (C, usize), E>)
+    where F2: ParserImpl<I, Error = E>, C: Collection<Item = O>, I: Clone, CG: Fn() -> C {
+        Parser::new_generic(combinators::CountedSeparated {
+            main_parser: self.0,
+            separator: by.0,
+            range,
+            collection_generator,
+        })
     }
 
     /// This returns a new parser, which collects a number of occurences which is in the given
@@ -278,9 +283,9 @@ impl<F, I, O, E> Parser<F, I> where F: ParserImpl<I, Output = O, Error = E> {
     /// Should this be impossible, it fails.
     ///
     /// Please read the notes in the documentation for [this type](Parser).
-    pub fn separated<C, F2, R: RangeLike>(self, range: R, by: Parser<F2, I>) -> parser!(<I, C, E>)
-    where F2: ParserImpl<I, Error = E>, C: Collection<Item = O>, I: Clone {
-        Parser::new_generic(combinators::MapLeft(combinators::CountedSeparated(self.0, by.0, range, PhantomData)))
+    pub fn separated<C, F2, R: RangeLike, CG>(self, range: R, by: Parser<F2, I>, collection_generator: CG) -> parser!(<I, C, E>)
+    where F2: ParserImpl<I, Error = E>, C: Collection<Item = O>, I: Clone, CG: Fn() -> C {
+        self / by * collection_generator * range
     }
 
     /// This returns a new parser, which collects a number of occurences which is equal to the
@@ -289,9 +294,9 @@ impl<F, I, O, E> Parser<F, I> where F: ParserImpl<I, Output = O, Error = E> {
     /// Should this be impossible, it fails.
     ///
     /// Please read the notes in the documentation for [this type](Parser).
-    pub fn const_separated<C, F2>(self, n: usize, by: Parser<F2, I>) -> parser!(<I, C, E>)
-    where F2: ParserImpl<I, Error = E>, C: Collection<Item = O>, I: Clone {
-        self.separated(n..=n, by)
+    pub fn const_separated<C, F2, CG>(self, n: usize, by: Parser<F2, I>, collection_generator: CG) -> parser!(<I, C, E>)
+    where F2: ParserImpl<I, Error = E>, C: Collection<Item = O>, I: Clone, CG: Fn() -> C {
+        self / by * collection_generator * (n..=n)
     }
 
     /// This returns a new parser, which counts the number of occurences which has to be within the
@@ -303,7 +308,7 @@ impl<F, I, O, E> Parser<F, I> where F: ParserImpl<I, Output = O, Error = E> {
     /// Please read the notes in the documentation for [this type](Parser).
     pub fn count_separated_within<R: RangeLike, F2>(self, range: R, by: Parser<F2, I>) -> parser!(<I, usize, E>)
     where F2: ParserImpl<I, Error = E>, I: Clone {
-        self.counted_separated::<NoCollection<O>, _, _>(range, by).map(|(_, count)| count)
+        self.counted_separated(range, by, NoCollection::new).map(|(_, count)| count)
     }
 
     /// This returns a new parser, which counts the number of occurences, and returns that number.
@@ -317,25 +322,25 @@ impl<F, I, O, E> Parser<F, I> where F: ParserImpl<I, Output = O, Error = E> {
     /// [`counted_separated`](Parser::counted_separated) without a separator.
     ///
     /// Please read the notes in the documentation for [this type](Parser).
-    pub fn counted_repeat<C, R: RangeLike>(self, range: R) -> parser!(<I, (C, usize), E>)
-    where C: Collection<Item = O>, I: Clone {
-        self.counted_separated(range, epsilon())
+    pub fn counted_repeat<C, R: RangeLike, CG>(self, range: R, collection_generator: CG) -> parser!(<I, (C, usize), E>)
+    where C: Collection<Item = O>, I: Clone, CG: Fn() -> C {
+        self.counted_separated(range, epsilon(), collection_generator)
     }
 
     /// [`separated`](Parser::separated) without a separator.
     ///
     /// Please read the notes in the documentation for [this type](Parser).
-    pub fn repeat<C, R: RangeLike>(self, range: R) -> parser!(<I, C, E>)
-    where C: Collection<Item = O>, I: Clone {
-        Parser::new_generic(combinators::MapLeft(combinators::CountedSeparated(self.0, combinators::Epsilon(PhantomData), range, PhantomData)))
+    pub fn repeat<C, R: RangeLike, CG>(self, range: R, collection_generator: CG) -> parser!(<I, C, E>)
+    where C: Collection<Item = O>, I: Clone, CG: Fn() -> C {
+        self * collection_generator * range
     }
 
     /// [`const_separated`](Parser::const_separated) without a separator.
     ///
     /// Please read the notes in the documentation for [this type](Parser).
-    pub fn const_repeat<C>(self, n: usize) -> parser!(<I, C, E>)
-    where C: Collection<Item = O>, I: Clone {
-        self.repeat(n..=n)
+    pub fn const_repeat<C, CG>(self, n: usize, collection_generator: CG) -> parser!(<I, C, E>)
+    where C: Collection<Item = O>, I: Clone, CG: Fn() -> C {
+        self * collection_generator * (n..=n)
     }
 
     /// [`count_separated_within`](Parser::count_separated_within) without a separator.
@@ -343,7 +348,7 @@ impl<F, I, O, E> Parser<F, I> where F: ParserImpl<I, Output = O, Error = E> {
     /// Please read the notes in the documentation for [this type](Parser).
     pub fn count_within<R: RangeLike>(self, range: R) -> parser!(<I, usize, E>)
     where I: Clone {
-        self.counted_repeat::<NoCollection<O>, _>(range).map(|(_, count)| count)
+        self.counted_repeat(range, NoCollection::new).map(|(_, count)| count)
     }
 
     /// [`count_separated`](Parser::counted_separated) without a separator.
@@ -514,15 +519,15 @@ impl<F1, F2, I> ops::BitOr<Parser<F2, I>> for Parser<F1, I> where F1: ParserImpl
     }
 }
 
-type InclusiveUsizeRange = ops::RangeInclusive<usize>;
-
-type WithManyCombinator<I, O, R, F, S> = Parser<combinators::MapLeft<combinators::CountedSeparated<O, R, F, S>>, I>;
-
 impl<F, I> ops::BitOr<()> for Parser<F, I> where F: ParserImpl<I>, I: Clone {
-    type Output = WithManyCombinator<I, Option<F::Output>, InclusiveUsizeRange, F, combinators::Epsilon<F::Error>>;
+    type Output = WithManyCombinator<I, fn() -> Option<F::Output>, InclusiveUsizeRange, F, combinators::Epsilon<F::Error>>;
 
     fn bitor(self, _: ()) -> Self::Output {
-        Parser::new_generic(combinators::MapLeft(combinators::CountedSeparated(self.0, combinators::Epsilon(PhantomData), 0..=1, PhantomData)))
+        fn return_none<T>() -> Option<T> {
+            None
+        }
+
+        self * (return_none as fn() -> Option<F::Output>) * (0..=1)
     }
 }
 
@@ -539,19 +544,53 @@ impl<F1, F2, I> ops::Div<Parser<F2, I>> for Parser<F1, I> {
     }
 }
 
-impl<F1, F2, I, R> ops::Mul<R> for ElementSeparator<F1, F2, I> where F1: ParserImpl<I>, F2: ParserImpl<I, Error = F1::Error>, R: RangeLike, I: Clone {
-    type Output = WithManyCombinator<I, Vec<F1::Output>, R, F1, F2>;
+/// This type is used to make the syntactic sugar work. It's observed if you multiply a parser or
+/// an [`ElementSeparator`]ElementSeparator] by a function (see
+/// [`*` for `ElementSeparator`](struct.ElementSeparator.html#impl-Mul<CG>), or
+/// [`*` for `Parser`](struct.Parser.html#impl-Mul<CG>)).
+/// Specifically, it allows to use operators for [`Parser::separated`](Parser::separated) and
+/// [`Parser::repeat`](Parser::repeat).
+pub struct WithCollectionGenerator<A, CG>(A, CG);
 
-    fn mul(self, range: R) -> Self::Output {
-        Parser::new_generic(combinators::MapLeft(combinators::CountedSeparated((self.0).0, (self.1).0, range, PhantomData)))
+impl<F, I, CG> ops::Mul<CG> for Parser<F, I> {
+    type Output = WithCollectionGenerator<Parser<F, I>, CG>;
+
+    fn mul(self, cg: CG) -> Self::Output {
+        WithCollectionGenerator(self, cg)
     }
 }
 
-impl<F1, I, R> ops::Mul<R> for Parser<F1, I> where F1: ParserImpl<I>, R: RangeLike, I: Clone {
-    type Output = WithManyCombinator<I, Vec<F1::Output>, R, F1, combinators::Epsilon<F1::Error>>;
+impl<E, S, I, CG> ops::Mul<CG> for ElementSeparator<E, S, I> {
+    type Output = WithCollectionGenerator<ElementSeparator<E, S, I>, CG>;
+
+    fn mul(self, cg: CG) -> Self::Output {
+        WithCollectionGenerator(self, cg)
+    }
+}
+
+type InclusiveUsizeRange = ops::RangeInclusive<usize>;
+
+type WithManyCombinator<I, G, R, F, S> = Parser<combinators::MapLeft<combinators::CountedSeparated<G, R, F, S>>, I>;
+
+impl<C, F1, I, CG, R> ops::Mul<R> for WithCollectionGenerator<Parser<F1, I>, CG> where F1: ParserImpl<I>, R: RangeLike, I: Clone, CG: Fn() -> C, C: Collection<Item = F1::Output> {
+    type Output = WithManyCombinator<I, CG, R, F1, combinators::Epsilon<F1::Error>>;
 
     fn mul(self, range: R) -> Self::Output {
-        self / Parser::new_generic(combinators::Epsilon(PhantomData)) * range
+        let WithCollectionGenerator(parser, cg) = self;
+        parser / Parser::new_generic(combinators::Epsilon(PhantomData)) * cg * range
+    }
+}
+
+impl<C,F1, F2, I, CG, R> ops::Mul<R> for WithCollectionGenerator<ElementSeparator<F1, F2, I>, CG> where F1: ParserImpl<I>, F2: ParserImpl<I, Error = F1::Error>, R: RangeLike, I: Clone, CG: Fn() -> C, C: Collection<Item = F1::Output> {
+    type Output = WithManyCombinator<I, CG, R, F1, F2>;
+
+    fn mul(self, range: R) -> Self::Output {
+        Parser::new_generic(combinators::MapLeft(combinators::CountedSeparated {
+            main_parser: ((self.0).0).0,
+            separator: ((self.0).1).0,
+            range,
+            collection_generator: self.1
+        }))
     }
 }
 
@@ -622,7 +661,7 @@ where I: SplitFirst + Clone, F: Fn(&I::Element) -> bool, E: ConsumeError<I> {
 /// [documentation for `Parser`](Parser)
 pub fn consume_while<I, E, F, R: RangeLike>(f: F, r: R) -> parser!(<I, (), E>)
 where I: SplitFirst, F: Fn(&I::Element) -> bool, E: ConsumeError<I>, I: Clone {
-    consume_one_where(f).repeat::<NoCollection<_>, _>(r).map(|_| ())
+    consume_one_where(f).repeat(r, NoCollection::new).map(|_| ())
 }
 
 /// Like [`consume_while`](consume_while), but returns the matched substring.
