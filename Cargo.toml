@@ -7,7 +7,7 @@ authors = ["42triangles <42triangles@tutanota.com>"]
 edition = "2018"
 readme = "README.md"
 keywords = ["parser", "combinator", "nom", "parsing", "parse"]
-categories = ["Parsing"]
+categories = ["parsing"]
 license = "MIT"
 
 [badges]
