@@ -1,7 +1,16 @@
 [package]
 name = "combinedfun"
+description = "A little `nom`-like parser combinator library which stays away from macros, while trying to achieve at least part of the expressiveness of `nom`"
+repository = "https://github.com/42triangles/combinedfun"
 version = "0.1.0"
 authors = ["42triangles <42triangles@tutanota.com>"]
 edition = "2018"
+readme = "README"
+keywords = ["parser", "combinator", "nom", "parsing", "parse"]
+categories = ["Parsing"]
+license = "MIT"
+
+[badges]
+maintenance = { status = "experimental" }
 
 [dependencies]
