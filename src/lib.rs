@@ -106,7 +106,7 @@ impl<F, I, O, E> ParserImpl<I> for F where F: Fn(I) -> Result<(I, O), E> {
 /// | combinator                                                 | has separator | has range | returns outputs | returns count | syntactic sugar |
 /// |------------------------------------------------------------|-----|------------|-----|-----|------|
 /// | [`counted_separated`](Parser::counted_separated)           | yes | yes        | yes | yes | none |
-/// | [`separated`](Parser::separated)                           | yes | yes        | yes | no  | [`/ sep`](#impl-Div<Parser<F2%2C%20I>>) [`* new_collection`](struct.ElementSeparator#impl-Mul<CG>) [`* range`](struct.WithCollectionGenerator.html#impl-Mul<R>) |
+/// | [`separated`](Parser::separated)                           | yes | yes        | yes | no  | [`/ sep`](#impl-Div<Parser<F2%2C%20I>>) [`* new_collection`](struct.ElementSeparator.html#impl-Mul<CG>) [`* range`](struct.WithCollectionGenerator.html#impl-Mul<R>) |
 /// | [`const_separated`](Parser::const_separated)               | yes | one number | yes | no  | none |
 /// | [`count_separated_within`](Parser::count_separated_within) | yes | yes        | no  | yes | none |
 /// | [`count_separated`](Parser::count_separated)               | yes | no         | no  | yes | none |
