@@ -243,6 +243,17 @@ impl<F, I, O, E> Parser<F, I> where F: ParserImpl<I, Output = O, Error = E> {
         self >> MapResult(f)
     }
 
+    /// This returns a new parser, which maps the given funciton to the result of this parser. This
+    /// function returns a [`Result`](Result), so it can lead to the returned parser failing even
+    /// if this one didn't. The given function also receives the input from before this parser was
+    /// applied, in case your error type requires that information.
+    pub fn map_result_with_input_before<O2, F2>(self, f: F2) -> parser!(<I, O2, E>)
+    where F2: Fn(I, O) -> Result<O2, E>, I: Clone {
+        Parser::new(move |input: I| {
+            self.0.apply(input.clone()).and_then(|(left, o)| Ok((left, f(input, o)?)))
+        })
+    }
+
     /// This returns a new parser, which maps the given function to the result of this parser. The
     /// returned parser fails if this one does, and doesn't fail if this one doesn't. The syntactic
     /// sugar is [`>>`](#impl-Shr<F2>).

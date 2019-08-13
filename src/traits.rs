@@ -122,6 +122,18 @@ impl<T> Collection for Vec<T> {
     }
 }
 
+impl Collection for String {
+    type Item = char;
+
+    fn reserve(&mut self, additional: usize) {
+        self.reserve(additional);
+    }
+
+    fn push(&mut self, _: usize, item: Self::Item) {
+        self.push(item);
+    }
+}
+
 impl<T> Collection for Option<T> {
     type Item = T;
 

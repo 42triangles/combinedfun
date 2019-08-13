@@ -20,6 +20,30 @@ impl<T> Collection for NoCollection<T> {
     fn push(&mut self, _: usize, _: Self::Item) { }
 }
 
+/// Used as a wrapper to some container implementing [`Extend`](std::iter::Extend).
+///
+/// This is not recommended right now, since it always just pushes a single element, and can't
+/// reserve items beforehand.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct ExtendCollection<T, I>(T, PhantomData<fn(I)>);
+
+impl<T, I> ExtendCollection<T, I> {
+    pub fn new(empty: T) -> Self {
+        ExtendCollection(empty, PhantomData)
+    }
+}
+
+impl<T, I> Collection for ExtendCollection<T, I>
+where T: Extend<I> {
+    type Item = I;
+
+    fn reserve(&mut self, _: usize) { }
+
+    fn push(&mut self, _: usize, item: Self::Item) {
+        self.0.extend(std::iter::once(item))
+    }
+}
+
 /// This input type keeps track of the position within the input it wraps.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Span<I, P>(pub I, pub P);
