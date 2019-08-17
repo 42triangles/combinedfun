@@ -2,7 +2,7 @@
 name = "combinedfun"
 description = "A little `nom`-like parser combinator library which stays away from macros, while trying to achieve at least part of the expressiveness of `nom`"
 repository = "https://github.com/42triangles/combinedfun"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["42triangles <42triangles@tutanota.com>"]
 edition = "2018"
 readme = "README.md"
