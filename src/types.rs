@@ -208,3 +208,54 @@ impl<'a, OI: SplitFirst, I, O, T: ?Sized> ConsumeError<OI> for VerboseError<'a, 
         Self::new(VerboseErrorKind::ConditionFailed, at)
     }
 }
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct PositionedError<P, E> {
+    pub position: P,
+    pub error: E,
+}
+
+impl<P, E> PositionedError<P, E> {
+    pub fn new(position: P, error: E) -> Self {
+        PositionedError {
+            position,
+            error,
+        }
+    }
+}
+
+impl<I, P: Position<I>, E: AltError<I>> AltError<Span<I, P>> for PositionedError<P, E> {
+    fn alt(self, other: Self, at: Span<I, P>) -> Self {
+        Self::new(at.1, self.error.alt(other.error, at.0))
+    }
+}
+
+impl<'a, I, P: Position<I>, E, T: ?Sized> TagError<'a, T, Span<I, P>> for PositionedError<P, E>
+where E: TagError<'a, T, I> {
+    fn tag(tag: &'a T, at: Span<I, P>) -> Self {
+        Self::new(at.1, E::tag(tag, at.0))
+    }
+}
+
+impl<I, P: Position<I>, E: EofError<I>> EofError<Span<I, P>> for PositionedError<P, E> {
+    fn no_eof(at: Span<I, P>) -> Self {
+        Self::new(at.1, E::no_eof(at.0))
+    }
+}
+
+impl<I, P: Position<I>, E: NotError<O, I>, O> NotError<O, Span<I, P>> for PositionedError<P, E> {
+    fn not(out: O, at: Span<I, P>) -> Self {
+        Self::new(at.1, E::not(out, at.0))
+    }
+}
+
+impl<I: SplitFirst + Clone, P: Position<I>, E> ConsumeError<Span<I, P>> for PositionedError<P, E>
+where E: ConsumeError<I> {
+    fn eof(at: Span<I, P>) -> Self {
+        Self::new(at.1, E::eof(at.0))
+    }
+
+    fn condition_failed(element: I::Element, at: Span<I, P>) -> Self {
+        Self::new(at.1, E::condition_failed(element, at.0))
+    }
+}

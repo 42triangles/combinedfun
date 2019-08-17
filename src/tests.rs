@@ -226,3 +226,25 @@ fn test_output() {
     assert_eq!(parser.parse_partial("abc"), Err(()));
     assert_eq!(parser.parse_partial(""), Err(()));
 }
+
+#[test]
+fn test_positioned_error() {
+    let parser = epsilon() >> -tag("abc") >> -tag("\n") >> -tag("def");
+    assert_eq!(parser.parse(Span::new("")), Err(PositionedError {
+        position: Pos { line: 0, column: 0, index: 0 },
+        error: (),
+    }));
+    assert_eq!(parser.parse(Span::new("ab")), Err(PositionedError {
+        position: Pos { line: 0, column: 0, index: 0 },
+        error: (),
+    }));
+    assert_eq!(parser.parse(Span::new("abc")), Err(PositionedError {
+        position: Pos { line: 0, column: 3, index: 3 },
+        error: (),
+    }));
+    assert_eq!(parser.parse(Span::new("abc\n")), Err(PositionedError {
+        position: Pos { line: 1, column: 0, index: 4 },
+        error: (),
+    }));
+    assert_eq!(parser.parse(Span::new("abc\ndef")), Ok(()));
+}

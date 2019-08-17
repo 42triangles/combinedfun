@@ -52,7 +52,7 @@ pub mod traits;
 pub use traits::{AltError, Collection, ConsumeError, EofError, HasEof, NotError, Position, RangeLike, Recordable, SplitFirst, Tag, TagError};
 
 pub mod types;
-pub use types::{Index, NoCollection, Pos, Span};
+pub use types::{Index, NoCollection, Pos, Span, PositionedError};
 
 pub mod combinators;
 
@@ -241,17 +241,6 @@ impl<F, I, O, E> Parser<F, I> where F: ParserImpl<I, Output = O, Error = E> {
     pub fn map_result<O2, F2>(self, f: F2) -> parser!(<I, O2, E>)
     where F2: Fn(O) -> Result<O2, E> {
         self >> MapResult(f)
-    }
-
-    /// This returns a new parser, which maps the given funciton to the result of this parser. This
-    /// function returns a [`Result`](Result), so it can lead to the returned parser failing even
-    /// if this one didn't. The given function also receives the input from before this parser was
-    /// applied, in case your error type requires that information.
-    pub fn map_result_with_input_before<O2, F2>(self, f: F2) -> parser!(<I, O2, E>)
-    where F2: Fn(I, O) -> Result<O2, E>, I: Clone {
-        Parser::new(move |input: I| {
-            self.0.apply(input.clone()).and_then(|(left, o)| Ok((left, f(input, o)?)))
-        })
     }
 
     /// This returns a new parser, which maps the given function to the result of this parser. The
@@ -704,3 +693,6 @@ pub fn output<I, O, E, F>(f: F) -> parser!(<I, O, E>)
 where F: Fn() -> Result<O, E> {
     Parser::new(move |inp: I| f().map(|out| (inp, out)))
 }
+
+/// The unit type can be used to not keep track of what specifically got the parser to fail.
+pub type NoError = ();
